@@ -1,0 +1,1346 @@
+---
+title: "aggregate_table_2023_01_2024_02_clean"
+author: "Jing Wu"
+format: html
+editor: visual
+---
+
+## Aggregate table Neat versions with functional coding
+
+To organize the all the R codes of the previous program on integrating all the aggregate tables of nine Connect sites from Jan-Nov. 2023 till Jan. 2024: (Jan-Feb, April-May, August, November, 2023 and Jan-Feb. 2024 by each site and plot their time-trend recruitment progress during this period
+
+## Running Code
+
+Based on the previous code
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# [hide] 
+library(data.table) ###to write or read and data management 
+library(boxr) ###read or write data from/to box
+library(tidyverse) ###for data management https://tidyselect.r-lib.org/reference/faq-external-vector.html
+library(dplyr) ###data management some functions are not available in the dplyr masked in the tidyverse
+library(reshape)  ###to work on transition from long to wide or wide to long data
+library(listr) ###to work on a list of vector, files or..
+#library(sqldf) ##sql
+#library(lubridate) ###date time it is already masked in 'tidyverse'
+library(ggplot2) ###plots
+library(ggpubr) ###for the publications of plots
+library(RColorBrewer) ###visions color http://www.sthda.com/english/wiki/colors-in-r
+library(gridExtra)
+#library(stringr) ###to work on patterns, charaters
+library(plyr)
+library(tidyr)
+library(tinytex) #for pdf
+#library(rmarkdown) ###for the output tables into other files: pdf, rtf, etc.
+library(janitor) #to get the summary sum
+library(finalfit) #https://cran.r-project.org/web/packages/finalfit/vignettes/export.html t
+library(expss) ###to add labels
+library(epiDisplay) ##recommended applied here crosstable, tab1
+#library(summarytools) ##recommended not applied in this R code
+library(gmodels) ##recommended but not applied in this R code
+library(magrittr)
+library(arsenal)
+library(gtsummary)
+library(kableExtra)
+#library(patchwork)
+library(rio)
+library(readxl)
+
+
+box_auth(client_id = "627lww8un9twnoa8f9rjvldf7kb56q1m",
+         client_secret = "gSKdYKLd65aQpZGrq9x4QVUNnn5C8qqm")
+```
+
+The aggregate tables from each site folder in the Connect_DCEG_site ##for the first quarter in 2023 of nine Connect sites:
+
+non-KP sites:
+
+UoC: id=https://nih.app.box.com/file/1152341930993?s=68bixzs9viseotratvsscvhvjv4w84yy; "Aggregate_Report_2023_Feb_27_2023_FILTERED.xlsx",
+
+SF: file id=https://nih.app.box.com/file/1131073521773, Site Aggregate Recruitment Metrics_Feb_2023.xlsx
+
+HP: file id= https://nih.app.box.com/file/1129928729857 HP_aggRpt_2023.02.02.xlsx
+
+HFH: folder id: https://nih.app.box.com/folder/197283499962 file id https://nih.app.box.com/file/1155314861906 Henry Ford Health Aggregate Recrutiment Metrics Report_2.24.2023_final.xlsx
+
+MF: file id: https://nih.app.box.com/file/1136138804005?s=ja36k4f3s38eoo0xdfgux90vt21zlr7e, marshfield_aggregate_recruitment_metrics_2023_2.xlsx
+
+KP sites: KPGA: file id: https://nih.app.box.com/file/1130840520630 KPGA_Aggregate Recruitment Metrics_20230202.xlsx KPHI: file id: https://nih.app.box.com/file/1131242741855 KPHI_Aggregate Recruitment Metrics_20230203.xlsx KPNW: file id: https://nih.app.box.com/file/1130922715232 KPNW_Aggregate Recruitment Metrics_20230203.xlsx KPCO: file id: https://nih.app.box.com/file/1107902251738 KPCO_Aggregate Recruitment Metrics_20230106.xlsx
+
+#input to data list of each non kp aggregate table by month (quartly) into R data list
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# [hide] 
+#non KP sites: 
+nonKP_dt<- function(dir,file_id){
+  dt.list <- list()
+  for (f in 1:5){
+  box_setwd(dir_id = dir[f])
+  dt <- eval(parse(text=paste("box_read(file_id=", file_id[f],",sheet=1)",sep="")))
+  
+  empty_columns <- colSums(is.na(dt) | dt == "") == nrow(dt)
+  dt<- dt[,!empty_columns]
+  col.n <- ncol(dt)
+  names(dt)[1] <- "factor"
+  
+  row.1st <- as.numeric(rownames(dt)[grepl("Total",dt$factor)])
+  rows.del = row.1st-1
+  tmp <- dt[-c(1:(row.1st-1)),]
+  
+  names(tmp) <- dt[2,]
+  #tmp <- tmp %>% mutate(across(contains(Age),~ gsub("n/a|-","",.x)))
+  tmp$site <- site[f]
+  
+  names(tmp)[5] <- paste0(names(tmp[5]),"recruit")
+  #  cnames <- names(tmp)[c(2:5,8)]
+  # # #  to check variables in tmp
+  # for (j in 1: length(cnames)){
+  # varname <- cnames[j]
+  # var<-pull(tmp,varname)
+  # tmp[,cnames[j]] <- ifelse(numbers_only(var), as.numeric(as.character(var)), var)
+  # }
+
+ 
+  names(tmp)[1] <- "factor"
+  
+  row_vec <- c(min(as.numeric(row.names(tmp)[grepl("Total",tmp$factor)]))-rows.del, min(as.numeric(row.names(tmp)[grepl("Sex",tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Race",tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Insurance", tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Urbanicity",tmp$factor)]))-rows.del, min(as.numeric(row.names(tmp)[grepl("Socioeconomic",tmp$factor)]))-rows.del,1+nrow(tmp))
+
+  times <- diff(row_vec)
+  groups <- c("Overall","Sex","Race","Insurance","Urbanicity","SES")
+
+  newcol <- NULL
+  for (m in 1:length(groups)){
+  
+  vet <- rep(groups[m],each=times[m])
+  newcol <- c(newcol,vet)
+  
+   }
+    tmp <- cbind(tmp,newcol)
+
+  dt.list[[f]] <- tmp
+  }
+  return(dt.list )
+}
+
+
+```
+
+```{r}
+#import the Jan-Feb.2023 data of each site of non KP sites:
+dir <- c(221284526200,172266418621,172259169880,197283499962,182126420786) 
+# Kp sites: 172266254866,172267916215,172267744905,172267385751,
+
+#non kp sites JanFeb, 2023
+file_id <- c("1152341930993","1131073521773","1136138804005","1155314861906","1129928729857") 
+site <- c("UCh","SF","MF","HFH","HP")
+
+#to save each dt.list by month
+dt.list.Jan <- nonKP_dt(dir,file_id)
+
+```
+
+#for nonkp April 2023 Aggregate tables input list from box:
+
+```{r}
+#nonKP aggregate tables April 2023
+dir <- c(221284526200,172266418621,172259169880,206300244548,182126420786)
+file_id <- c("1206160632248","1185055238854","1185156202278","1206785719769","1206914523362") 
+site <- c("UCh","SF","MF","HFH","HP")
+dt.list.Apr <- nonKP_dt(dir,file_id)
+```
+
+#for nonkp Aug 2023 Aggregate tables input list from box:
+
+```{r}
+#August, 2023
+site <- c("UCh","SF","MF","HFH","HP")
+file_id <- c("1277901914340","1277836775242","1277131252774","1278020707143","1273754776017")
+dir <- c(221284526200,172266418621,172259169880,221301688533,182126420786)
+
+dt.list.Aug <- nonKP_dt(dir, file_id)
+
+#for Nov data 2023
+#nonKP sites
+dir <- c(221284526200,172266418621,172259169880,234046146152,182126420786) # Kp sites: 172266254866,172267916215,172267744905,172267385751,
+file_id <- c("1352788763929","1350620486383","1365468886947","1354757625022","1355846204475") 
+dt.list.Nov <- nonKP_dt(dir,file_id)
+
+#for Jan-Feb 2024 Aggregate tables:
+dir <- c(221284526200,172266418621,172259169880,246886979496,182126420786) # Kp sites: 172266254866,172267916215,172267744905,172267385751,
+
+#non kp sites Feb, 2024
+file_id <- c("1433640971443","1432398128660","1437702709795","1431357282964","1433777356168") 
+site <- c("UCh","SF","MF","HFH","HP")
+dt.list.Feb24 <- nonKP_dt(dir,file_id)
+```
+
+#for aggregate table of each non kp site
+
+```{r}
+#UChicago
+vars <- c("Total","Active","Passive","Activerecruit","All eligible")
+
+aggre.UCh <- function(dt.list){
+  
+  dt <- dt.list[[1]]
+  names(dt)[8] <- "Activerecruit"
+  UCh <- dt[,c(1,2,4,6,8,11,15,16)]
+  UCh$factor[which(rowSums(is.na(UCh[,vars])) == 5)]
+  names(UCh)
+#  [1] "Sex" 
+#  [2] "Race, Ethnicity"                                                                     #  [3] "Insurance"                                                                           #  [4] "Preferred Language"                                                                  #  [5] "Urbanicity"                                                                          #  [6] "Persistent Poverty"                                                                  #  [7] "Socioeconomic Status"                                                                #  [8] "Location*"                                                                           #  [9] "*Location of any upcoming appointment, NOT location of study biospecimen appt; Orland Park not currently accepting appts"         
+# [10] "**Catchment data represent all recruitment sites pulled from April 2023. Individual site catchment data are currently unavailable"
+row.names(UCh[which(rowSums(is.na(UCh[,vars])) == 5),])
+# [1] "5"  "9"  "31" "38" "42" "54" "58" "65" "74" "75"
+tmp <- UCh[which(as.numeric(row.names(UCh)) %nin% c(5,9,31,38:42,54:58,65:75)),] %>% 
+  mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                              newcol=="Sex" & factor == "Female" ~ "Female",
+                              newcol=="Sex" & factor == "Male" ~ "Male",
+                              #newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                              #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+                              newcol=="Race" &  factor %in% c("White, Non-Hispanic", "White, Ethnicity Unknown") ~ "White",
+                              newcol=="Race" & factor %in% c("Asian, Non-Hispanic", "Asian, Ethnicity Unknown") ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & factor %in% c("Black, Non-Hispanic","Black, Ethnicity Unknown")  ~ "Black/ African-American",
+                              #newcol=="Race" & grepl("Hawaiian",race) & grepl("non-Hispanic",race_ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & factor %in% c("Native American, Non-Hispanic","Native American, Ethnicity Unknown") ~ "American Indian/ Alaskan Native",
+                              newcol=="Race" & factor %in% c("Category Not Specified Above, Non-Hispanic", "Category Not Specified Above, Ethnicity Unknown","Multiracial, Non-Hispanic", "Multiracial, Ethnicity Unknown") ~ "Multi-racial/ Other",
+                              newcol=="Race" & grepl(", Hispanic", factor) ~ "Hispanic/ Latinx",
+                              newcol=="Race" & factor %in% c("Race Unknown, Non-Hispanic","Race Unknown, Ethnicity Unknown") ~ "Race.Unknown",
+                              #newcol=="Race" & Factor=="Total" ~"Race.Total",
+                              newcol=="Insurance" & grepl("Commercial|Private",factor) & !grepl("Medic|TRICARE", factor) ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid", factor) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("TRICARE|VA", factor) ~ "Military",
+                              newcol=="Insurance" & grepl("Other|Worker", factor) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown", factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & factor == "RUCA Code 1" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("Code 2", factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("Code 3", factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("Code 4", factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("Code 5", factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("Code 6", factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("Code 7", factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("Code 8", factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("Code 9", factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("Code 10",factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown", factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & grepl("scores 1-25", factor) ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("scores 26-50", factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("scores 51-75", factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("scores 76-100", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown",factor) ~"SES.Unknown/ Missing",
+                              newcol=="SES" & grepl("Other ADI", factor) ~ "SES.Other ADI"
+  ))%>% mutate(across(contains(vars),~as.numeric(.x)))
+
+ #UCh.new <- tmp %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble()
+ #total.rr <- 100* max(UCh.new$Total)/max(UCh.new$Activerecruit)
+ 
+ UCh.group <- tmp %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble()
+ #the overall row is the highest one of each column in Feb, March, the April Insurance Active min than Overall
+ 
+ UCh.missing <- UCh.group %>% select(contains(vars), site, newcol) %>%
+    mutate(across(where(is.numeric), ~ max(.x)-(.x))) %>% 
+    mutate(new_group=ifelse(newcol=="Overall",newcol,ifelse(newcol %in% c("Sex","SES"), 
+                            paste0(newcol,".Unknown/ Missing"),paste0(newcol,".Unknown"))))
+ 
+ UCh.new <- bind_rows(tmp,UCh.missing)  %>% as_tibble() %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble()
+
+  UCh.new <- UCh.new %>%
+ mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+    ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+    AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent,Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+  
+  return(UCh.new[,c(1:5,8,10,6,7,11,9,12)])
+}
+
+```
+
+#to integrate all the UCh tables into five demgraphic factors: sex, race-ethnicity, insurance, urbanicity, and ADI.
+
+#Factor Age would be extracted from the Connect recruitment table in GCP
+
+```{r}
+dt.list <- dt.list.Jan
+UCh_Jan <- aggre.UCh(dt.list)
+UCh_Jan$Month <- "Feb-23"
+UCh_Apr <- aggre.UCh(dt.list.Apr)
+UCh_Apr$Month <- "May-23"
+
+UCh_Aug <- aggre.UCh(dt.list.Aug)
+UCh_Aug$Month <- "Aug-23"
+
+UCh_Nov <- aggre.UCh(dt.list.Nov)
+UCh_Nov$Month <- "Nov-23"
+
+UCh_Feb24 <- aggre.UCh(dt.list.Feb24)
+UCh_Feb24$Month <- "Feb-24"
+
+```
+
+#time-trend plots by demographic factors:sex, race-ethnicity, insurance, urbanicity, and RUCA.
+
+```{r}
+
+```
+
+#for SF site:
+
+```{r}
+##SP
+agg.SF <- function(dt.list){
+   dt <- dt.list[[2]] 
+   #dt$site <- "SF"
+   SF <- dt[,c(1:6,8,12,13)]
+   
+   SF <- SF %>% mutate(race = ifelse(!is.na(factor) & newcol=="Race", factor, ifelse(is.na(factor) & newcol=="Race",lag(factor),NA)),
+                      race_ethn =ifelse(newcol=="Race", rep(c("non-Hispanic","Hispanic"),5), NA))  
+
+ SF <- SF %>% filter(. , rowSums(is.na(SF[,vars])) < 5 & (race != "Race" | is.na(race)) & !grepl("English|county|Language", factor)) %>% 
+  mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                              newcol=="Sex" & factor == "Female" ~ "Female",
+                              newcol=="Sex" & factor == "Male" ~ "Male",
+                              #newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                              #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+                              newcol=="Race" & grepl("White",race)& grepl("non-Hispanic",race_ethn) ~ "White",
+                              newcol=="Race" & grepl("Asian",race) & grepl("non-Hispanic", race_ethn) ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & grepl("Black",race) & grepl("non-Hispanic",race_ethn) ~ "Black/ African-American",
+                              #newcol=="Race" & grepl("Hawaiian",race) & grepl("non-Hispanic",race_ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & grepl("Native American",race) & grepl("non-Hispanic", race_ethn) ~ "American Indian/ Alaskan Native",
+                              #newcol=="Race" & grepl("More|Multi-racial",race) & grepl("Non-Hispanic", race_ethn) ~ "Multi-racial/ Other",
+                              newcol=="Race" & race_ethn=="Hispanic" ~ "Hispanic/ Latinx",
+                              #newcol=="Race" & grepl("Unknown",Factor) & grepl("Non-Hispanic/Latinx",Factor) ~ "Race.Unknown",
+                              #newcol=="Race" & Factor=="Total" ~"Race.Total",
+                              newcol=="Insurance" & grepl("Commercial|Private|Self-Pay|Blue Shield",factor) & !grepl("Medic", factor) ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid", factor) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("Tricare|VA", factor) ~ "Military",
+                              newcol=="Insurance" & grepl("Other|Worker", factor) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown|NA", factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & factor == "RUCA Code 1" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("Code 2", factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("Code 3", factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("Code 4", factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("Code 5", factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("Code 6", factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("Code 7", factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("Code 8", factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("Code 9", factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("Code 10",factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown", factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & grepl("scores 1-25", factor) ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("scores 26-50", factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("scores 51-75", factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("scores 76-100", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown",factor) ~"SES.Unknown/ Missing",
+                              #newcol=="SES" & grepl("Total", factor) ~ "SES.Total"
+  )) %>% mutate(across(contains(vars),~as.numeric(.x)))
+
+
+ SF.group <- SF %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble() #confirmed the overall row are the maximum of each column, the data on March, the sum of aach demographic gactor is different.
+ 
+ 
+  SF.missing <- SF.group %>% select(contains(vars), site, newcol) %>%
+    mutate(across(where(is.numeric), ~ max(.x)-(.x))) %>% mutate(Total=Active + Passive) %>%
+    mutate(new_group=ifelse(newcol=="Overall",newcol,ifelse(newcol %in% c("Sex","SES"), 
+                            paste0(newcol,".Unknown/ Missing"),paste0(newcol,".Unknown"))))
+
+  SF.new <- bind_rows(SF,SF.missing)  %>%  group_by(newcol,new_group) %>% 
+   mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% 
+   distinct(new_group, .keep_all = TRUE) %>% as_tibble() %>% 
+    mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+    #response.rate.Total = ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100*as.numeric(Total)/max(as.numeric(Activerecruit,na.rm=TRUE)),2)),
+    #ResponseRt.Disparity = round(100*(Response.Rate-total.rr)/total.rr,2),
+        ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+    AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent,Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+
+   return(SF.new[,c(2,1,3:5,8,10,6,7,11,9,12)])
+}
+  
+```
+
+to get the summary aggregate tables of SF with the function above
+
+```{r}
+SF_Jan <- agg.SF(dt.list.Jan)
+SF_Jan$Month <- "Feb-23"
+SF_Apr <- agg.SF(dt.list.Apr)
+SF_Apr$Month <- "May-23"
+SF_Aug <- agg.SF(dt.list.Aug)
+SF_Aug$Month <- "Aug-23"
+SF_Nov <- agg.SF(dt.list.Nov)
+SF_Nov$Month <- "Nov-23"
+SF_Feb24 <- agg.SF(dt.list.Feb24)
+SF_Feb24$Month <- "Feb-24"
+
+```
+
+#for MFH site a. the function to convert the original input table in r to the summary integrated aggregate tables
+
+```{r}
+##MFH
+agg.MFH <- function(dt.list){
+  dt <- dt.list[[3]]
+  MF <- dt[,c(1:6,9,13,14)]
+  #MF$site <- "MF"
+
+  
+names(MF) <- c("Factor","race.ethn", "Total", "Active","Passive","Activerecruit","All eligible","site","newcol")
+vars <- c("Total", "Active","Passive","Activerecruit","All eligible")
+tmp1 <- filter(MF, rowSums(is.na(MF[,vars])) < 5 & !grepl("English|No|Yes",Factor)) %>% 
+  mutate(new_group= case_when(newcol=="Overall" & Factor=="Reference" ~ "Overall",
+                              newcol=="Sex" & Factor == "Female" ~ "Female",
+                              newcol=="Sex" & Factor == "Male" ~ "Male",
+                              newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", Factor) ~"Sex.Unknown/ Missing",
+                              #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+                              newcol=="Race" & grepl("White",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "White",
+                              newcol=="Race" & grepl("Asian",Factor) & grepl("Non-Hispanic|Unknown", race.ethn) ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & grepl("Black",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Black/ African-American",
+                              newcol=="Race" & grepl("Hawaiian",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & grepl("Indian|Native",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "American Indian/ Alaskan Native",
+                              newcol=="Race" & grepl("More|Multiracial",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Multi-racial/ Other",
+                              newcol=="Race" & race.ethn=="Hispanic" ~ "Hispanic/ Latinx",
+                              newcol=="Race" & grepl("Unknown",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Race.Unknown",
+                              #newcol=="Race" & Factor=="Total" ~"Race.Total",
+                              newcol=="Insurance" & grepl("Private|Commerical",Factor) & race.ethn != "TRICARE" ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",race.ethn) & !grepl("Medicaid", race.ethn) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid", race.ethn) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("VA|TRICARE", race.ethn) ~ "Military",
+                              newcol=="Insurance" & grepl("Other|Worker", Factor) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", Factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown", Factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & Factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & Factor == "RUCA Code 1" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("Code 2", Factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("Code 3", Factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("Code 4", Factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("Code 5", Factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("Code 6", Factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("Code 7", Factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("Code 8", Factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("Code 9", Factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("Code 10",Factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown", Factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", Factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & grepl("First Quartile", Factor) ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("Second", Factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("Third Quartile", Factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("Fourth Quartile", Factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown",Factor) ~"SES.Unknown/ Missing",
+                              #newcol=="SES" & grepl("Total", Factor) ~ "SES.Total"
+  )) %>% mutate(across(contains(vars),~as.numeric(.x)))
+
+MF.group <- tmp1 %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE)
+
+MF.new <- tmp1 %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble()
+ 
+#total.rr <- 100* max(MF.new$Total)/max(MF.new$Activerecruit)
+ MF.new <- MF.new %>% 
+    mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+   ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+    AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent,Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+ 
+ return(MF.new[,c(1:5,8,10,6:7,11,9,12)])
+}
+```
+
+to integrate MF input data into the summary aggregate tables, the table of Feb 2024 of MFH is quite different from the previous versions in formats columns, therefore, the integration of the summary aggregate table of 2024-Feb is a stand-alone code below without using the function: agg.MFH
+
+```{r}
+MF_Jan <- agg.MFH(dt.list.Jan)
+MF_Jan$Month <- "Feb-23"
+MF_Apr <- agg.MFH(dt.list.Apr)
+MF_Jan$Month <- "May-23"
+MF_Aug <- agg.MFH(dt.list.Aug)
+MF_Aug$Month <- "Aug-23"
+MF_Nov <- agg.MFH(dt.list.Nov)
+MF_Nov$Month <- "Nov-23"
+
+
+#MF_Feb24 <- agg.MFH(dt.list.Feb24)
+MF_Jan$Month <- "Feb-24"
+
+  dt <- dt.list.Feb24[[3]]
+  MF <- dt[,c(1:5,7,11,15,16)]
+  #MF$site <- "MF"
+
+names(MF) <- c("Factor","race.ethn", "Total", "Active","Passive","ActiveOptoutVeri","All eligible","site","newcol")
+
+tmp1 <- filter(MF, rowSums(is.na(MF[,c("Total", "Active","Passive","ActiveOptoutVeri","All eligible")])) < 5 & !grepl("English|No|Yes",Factor)) %>% 
+  mutate(new_group= case_when(newcol=="Overall" & Factor=="Reference" ~ "Overall",
+                              newcol=="Sex" & Factor == "Female" ~ "Female",
+                              newcol=="Sex" & Factor == "Male" ~ "Male",
+                              newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", Factor) ~"Sex.Unknown/ Missing",
+                        
+                              newcol=="Race" & grepl("White",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "White",
+                              newcol=="Race" & grepl("Asian",Factor) & grepl("Non-Hispanic|Unknown", race.ethn) ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & grepl("Black",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Black/ African-American",
+                              newcol=="Race" & grepl("Hawaiian",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & grepl("Indian|Native",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "American Indian/ Alaskan Native",
+                              newcol=="Race" & grepl("More|Multiracial",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Multi-racial/ Other",
+                              newcol=="Race" & race.ethn=="Hispanic" ~ "Hispanic/ Latinx",
+                              newcol=="Race" & grepl("Unknown",Factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Race.Unknown",
+                             
+                              newcol=="Insurance" & grepl("Private|Commerical",Factor) & race.ethn != "TRICARE" ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",race.ethn) & !grepl("Medicaid", race.ethn) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid", race.ethn) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("VA|TRICARE", race.ethn) ~ "Military",
+                              newcol=="Insurance" & grepl("Other|Worker", Factor) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", Factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown", Factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & Factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & Factor == "RUCA Code\r\n1" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("Code\r\n2", Factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("Code\r\n3", Factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("Code\r\n4", Factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("Code\r\n5", Factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("Code\r\n6", Factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("Code\r\n7", Factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("Code\r\n8", Factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("Code\r\n9", Factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("Code\r\n10",Factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown", Factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", Factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & grepl("First\r\nQuartile", Factor) ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("Second", Factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("Third\r\nQuartile", Factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("Fourth\r\nQuartile", Factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown",Factor) ~"SES.Unknown/ Missing"),
+              Activerecruit = ifelse(!is.na(ActiveOptoutVeri) & !is.na(Passive), as.numeric(ActiveOptoutVeri) - as.numeric(Passive), NA))
+
+vars <- c("Total", "Active","Passive","Activerecruit","All eligible")
+
+tmp1 <- tmp1 %>% mutate(across(contains(vars),~as.numeric(.x)))
+
+MF.group <- tmp1 %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE)
+
+MF_new<- tmp1 %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble()
+ 
+total.rr <- 100* max(MF_new$Total)/max(MF_new$Activerecruit)
+ MF_new <- MF_new %>% 
+    mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+   ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+    AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent,Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+
+ MF_Feb24 <- MF_new[,c(1:5,9,11,7:8,12,10,13)]
+ MF_Feb24$Month <- "Feb-24"
+ 
+```
+
+for HFH site: from Henry Ford Health Aggregate Recrutiment Metrics Report_2.24.2023_final.xlsx to Nov.2023
+
+```{r}
+ #HFH
+agg.HFH <-function(dt.list){
+HFH <- dt.list[[4]]
+names(HFH)[8] <- "All eligible"
+HFH <- HFH[,c(1:5,8,12,13)]
+
+race.sq <- HFH$factor[which(HFH$newcol=="Race" & !is.na(HFH$factor))]
+
+ethnic <- HFH$Total[grepl("Hispanic|Unknown",HFH$Total)]
+
+HFH$race <-  ifelse(HFH$newcol=="Race",c(rep(NA, each=5),rep(race.sq,each=length(ethnic))),NA)
+
+HFH$race_ethn <- ifelse(HFH$newcol=="Race" & length(ethnic)==3, rep(c("non-Hispanic","Unknown","Hispanic"),5),ifelse(HFH$newcol=="Race" & length(ethnic)==2, rep(c("non-Hispanic","Hispanic"),5), NA))
+
+#HFH <- HFH %>% mutate(race = ifelse(is.na(race) & newcol=="Race",lag(race),race))
+
+
+ tmp <- HFH %>% filter(. , rowSums(is.na(HFH[,vars])) < 5 & (race != "Race" | is.na(race)) & !grepl("Needed|county", factor)) %>% 
+  mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                              newcol=="Sex" & factor == "Female" ~ "Female",
+                              newcol=="Sex" & factor == "Male" ~ "Male",
+                              #newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                              #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+                              newcol=="Race" & grepl("White",race)& grepl("non-Hispanic|Unknown",race_ethn) ~ "White",
+                              newcol=="Race" & grepl("Asian",race) & grepl("non-Hispanic|Unknown", race_ethn) ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & grepl("Black",race) & grepl("non-Hispanic|Unknown",race_ethn) ~ "Black/ African-American",
+                              #newcol=="Race" & grepl("Hawaiian",race) & grepl("non-Hispanic",race_ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & grepl("Native American",race) & grepl("non-Hispanic|Unknown", race_ethn) ~ "American Indian/ Alaskan Native",
+                              #newcol=="Race" & grepl("More|Multi-racial",race) & grepl("Non-Hispanic", race_ethn) ~ "Multi-racial/ Other",
+                              newcol=="Race" & race_ethn=="Hispanic" ~ "Hispanic/ Latinx",
+                              #newcol=="Race" & grepl("Unknown",Factor) & grepl("Non-Hispanic/Latinx",Factor) ~ "Race.Unknown",
+                              #newcol=="Race" & Factor=="Total" ~"Race.Total",
+                              newcol=="Insurance" & grepl("Commercial|Private",factor) & !grepl("Medic", factor) ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid", factor) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("TRICARE|VA", factor) ~ "Military",
+                              newcol=="Insurance" & grepl("Other|Worker", factor) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown", factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & factor == "RUCA Code 1" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("Code 2", factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("Code 3", factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("Code 4", factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("Code 5", factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("Code 6", factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("Code 7", factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("Code 8", factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("Code 9", factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("Code 10",factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown", factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & grepl("scores 1-25", factor) ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("scores 26-50", factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("scores 51-75", factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("scores 76-100", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown",factor) ~"SES.Unknown/ Missing",
+                              #newcol=="SES" & grepl("Total", factor) ~ "SES.Total"
+  ))%>% mutate(across(contains(vars),~as.numeric(.x)))
+  #HFH.new  <- HFH.new [!duplicated(HFH.new $new_group) & !is.na(HFH.new $new_group),]
+  
+  HFH.group <- tmp %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble()#the columns in the overall row are not the maximum of each column, which needs to update the Overall
+  
+  HFH.missing <- HFH.group %>% select(contains(vars), site, newcol) %>%
+    mutate(across(where(is.numeric), ~ max(.x)-(.x))) %>% mutate(Total=Active+Passive) %>% 
+    mutate(new_group=ifelse(newcol=="Overall",newcol,ifelse(newcol %in% c("Sex","SES"), 
+                            paste0(newcol,".Unknown/ Missing"),paste0(newcol,".Unknown"))))
+ 
+ HFH.new <- bind_rows(tmp,HFH.missing)  %>%  group_by(newcol,new_group) %>% 
+   mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% 
+   distinct(new_group, .keep_all = TRUE) %>% as_tibble()
+
+ HFH.new <- HFH.new  %>%  
+   mutate(Total = ifelse(newcol =="Overall",max(HFH.group$Total),Total),
+           Active = ifelse(newcol =="Overall",max(HFH.group$Active),Active),
+           Passive = ifelse(newcol =="Overall",max(HFH.group$Passive),Passive),
+           Activerecruit = ifelse(newcol =="Overall",max(HFH.group$Activerecruit),Activerecruit),
+           `All eligible` = ifelse(newcol =="Overall",max(HFH.group$`All eligible`),`All eligible`))
+
+col_pct <- function(x) { 
+  ifelse(!is.na(x), paste0(format(round(x,0),big.mark=","), " ( ",round(100*x/max(x,na.rm=TRUE),2), "%)"), " ")
+}
+ 
+HFH.new <- as_tibble(HFH.new) %>%
+  mutate(Total=Active+Passive,
+    Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+   ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+  AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+
+return(HFH.new[,c(1:5,8,10,6,7,11,9,12)])
+}
+```
+
+integration of each input HFH data into the summary aggregate tables by month via agg.HFH
+
+```{r}
+HFH_Jan <- agg.HFH(dt.list.Jan)
+HFH_Jan$Month <- "Feb-23"
+HFH_Apr <- agg.HFH(dt.list.Apr)
+HFH_Apr$Month <- "May-23"
+HFH_Aug <- agg.HFH(dt.list.Aug)
+HFH_Aug$Month <- "Aug-23"
+HFH_Nov <- agg.HFH(dt.list.Nov)
+HFH_Nov$Month <- "Nov-23"
+
+HFH_Feb24 <- agg.HFH(dt.list.Feb24)
+HFH_Feb24$Month <- "Feb-24"
+
+
+```
+
+#for HP site: four aggregate tables by quarter in 2023
+
+```{r}
+
+agg.HP <-function(dt.list){
+ dt <- dt.list[[5]] 
+  #dt$site <- "HP"
+  if( ncol(dt) == 9) {
+    names(dt)[2:7]<-c("race.ethn","Total","Active","Passive","Activerecruit", "All eligible")
+  } else {
+    names(dt)[2:6]<-c("race.ethn","Active","Passive","Activerecruit", "All eligible")
+  }
+ 
+  
+    numbers_only <- function(x) !grepl("\\D", x)
+             
+##HP Feb, 2023 doesn't have Total verified column as the one of Aug.
+ ###convert the numeric
+dt <- dt
+cnames <- names(dt)
+#  to check variables in dt
+for (i in 1: length(cnames)){
+   varname <- cnames[i]
+   var<-pull(dt,varname)
+   var <- ifelse(var ==".", gsub(".","0",var),var)
+   
+   dt[,cnames[i]] <- ifelse(numbers_only(var), as.numeric(as.character(var)), var)
+}
+
+
+  HP <- dt %>% mutate(factor=ifelse(is.na(factor),lag(factor),factor)) %>%
+    mutate(factor=ifelse(is.na(factor),lag(factor),factor))
+  dt$factor[which(rowSums(is.na(dt[,c(3:6)])) == 4)]
+                                   
+  tmp <- HP[which(as.numeric(row.names(HP)) %nin% c(7,11,32,33,37,43:46,48,59:62,64)),] %>%
+    mutate(Total = Active + Passive,
+           new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                              newcol=="Sex" & factor == "Sex" ~ "Female",
+                              newcol=="Sex" & factor == "Male" ~ "Male",
+                              #newcol=="Sex" & grepl("Other",Factor) ~"Sex.Other",
+                              newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                              #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+                              newcol=="Race" & factor=="White" & grepl("Non-Hispanic|Unknown",race.ethn) ~ "White",
+                              newcol=="Race" & grepl("Asian",factor) & grepl("Non-Hispanic|Unknown", race.ethn) ~ "Asian/ Middle Eastern",
+                              newcol=="Race" & grepl("Black",factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Black/ African-American",
+                              newcol=="Race" & grepl("Hawaiian",factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Native Hawaiian/ Other Pacific Islander",
+                              newcol=="Race" & grepl("Native American",factor) & grepl("Non-Hispanic|Unknown", race.ethn) ~ "American Indian/ Alaskan Native",
+                              newcol=="Race" & grepl("Other|Multi-racial",factor) & grepl("Non-Hispanic|Unknown", race.ethn) ~ "Multi-racial/ Other",
+                              newcol=="Race" & race.ethn=="Hispanic" ~ "Hispanic/ Latinx",
+                              newcol=="Race" & grepl("Unknown",factor) & grepl("Non-Hispanic|Unknown",race.ethn) ~ "Race.Unknown",
+                              newcol=="Race" & race.ethn=="Ethnicity" ~"Hispanic/ Latinx",
+                              newcol=="Insurance" & grepl("Commercial|Private|Employment|Purchase",factor) & !grepl("Medic", factor) ~ "Private/Commercial",
+                              newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                              newcol=="Insurance" & grepl("Medicaid|Public", factor) ~ "Medicaid",
+                              newcol=="Insurance" & grepl("Tricare|VA", factor) ~ "Military",
+                              newcol=="Insurance" & (grepl("Other|Worker", factor) & !grepl("Public",factor)) ~"Other",
+                              newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                              newcol=="Insurance" & grepl("Unknown", factor) ~ "Insurance.Unknown",
+                              #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                              newcol=="Urbanicity" & factor == "Urbanicity" ~ "RUCA Code 1",
+                              newcol=="Urbanicity" & grepl("CODE 2", factor) ~ "RUCA Code 2",                            
+                              newcol=="Urbanicity" & grepl("CODE 3", factor) ~ "RUCA Code 3",
+                              newcol=="Urbanicity" & grepl("CODE 4", factor) ~ "RUCA Code 4",                            
+                              newcol=="Urbanicity" & grepl("CODE 5", factor) ~ "RUCA Code 5",
+                              newcol=="Urbanicity" & grepl("CODE 6", factor) ~ "RUCA Code 6",                            
+                              newcol=="Urbanicity" & grepl("CODE 7", factor) ~ "RUCA Code 7",
+                              newcol=="Urbanicity" & grepl("CODE 8", factor) ~ "RUCA Code 8",                            
+                              newcol=="Urbanicity" & grepl("CODE 9", factor) ~ "RUCA Code 9",
+                              newcol=="Urbanicity" & grepl("CODE 10",factor)  ~ "RUCA Code 10",
+                              newcol=="Urbanicity" & grepl("Unknown|Missing", factor) ~ "Urbanicity.Unknown", 
+                              #newcol=="Urbanicity" & grepl("Total", factor) ~ "Urbanicity.Total", 
+                              newcol=="SES" & factor=="Socioeconomic Status" ~ "First Quartile (ADI scores 1-25)",
+                              newcol=="SES" & grepl("scores 26-50", factor) ~ "Second Quartile (ADI scores 26-50)",
+                              newcol=="SES" & grepl("scores 51-75", factor) ~ "Third Quartile (ADI scores 51-75)",
+                              newcol=="SES" & grepl("scores 76-100", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                              newcol=="SES" & grepl("Unknown|Missing",factor) ~"SES.Unknown/ Missing",
+                              #newcol=="SES" & grepl("Total", factor) ~ "SES.Total"
+  ))
+  
+ HP.group <- tmp %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble()
+ 
+ HP.new <- tmp %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble() 
+ 
+ total.rr <- 100* max(HP.new$Total)/max(HP.new$Activerecruit)
+ HP.new <- as_tibble(HP.new) %>% mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+    Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+    #response.rate.Total = ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100*as.numeric(Total)/max(as.numeric(Activerecruit,na.rm=TRUE)),2)),
+    #ResponseRt.Disparity = round(100*(Response.Rate-total.rr)/total.rr,2),
+    ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/max(as.numeric(Activerecruit),na.rm=TRUE), 2), " %"),
+  AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/max(as.numeric(`All eligible`),na.rm=TRUE), 2), " %")) %>%  select(newcol,site, new_group,contains(vars),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+ 
+ return(HP.new[,c(1:5,8,10,6:7,11,9,12)])
+ }
+##HP Feb, 2023 doesn't have Total verified column as the one of Aug. 
+ 
+```
+
+integration of each input HFH data into the summary aggregate tables by month via agg.HP
+
+```{r}
+HP_Jan <- agg.HP(dt.list.Jan)
+HP_Jan$Month <- "Feb-23"
+HP_Apr <- agg.HP(dt.list.Apr)
+HP_Apr$Month <- "May-23"
+HP_Aug <- agg.HP(dt.list.Aug)
+HP_Aug$Month <- "Aug-23"
+HP_Nov <- agg.HP(dt.list.Nov)
+HP_Nov$Month <- "Nov-23"
+
+HP_Feb24 <- agg.HP(dt.list.Feb24)
+HP_Feb24$Month <- "Feb-24"
+
+
+```
+
+#KP site percentage aggregate tables, all the counts are derived by the catchment N based on the catchment table reported on Jun. 2023.
+
+The `function to input and generate the lists of aggregate tables from original ones to the final integrated ones`
+
+```{r}
+
+KP.agg.ls <- function(dir_kp,file_kp,catchment.kp){
+  
+ kp.nls <- list()
+ kp.ptls <- list()
+ n <- length(dir_kp)
+for (f in 1:n){
+  dir=dir_kp[f]
+  box_setwd(dir_id  = dir)
+  dt <- eval(parse(text=paste("box_read(file_id=", file_kp[f],",sheet=1)",sep="")))
+  #dt <- read_xlsx(dt.list[[f]])
+  emptyRow <- row.names(dt)[rowSums(is.na(dt)| dt == "") == ncol(dt)]
+  empty_columns <- colSums(is.na(dt) | dt == "") == nrow(dt)
+  dt<- dt[,!empty_columns]
+  #names(dt) <- dt[3,]
+  
+
+  #empty_rows <-rowSums(is.na(dt)| dt == "") == ncol(dt)
+
+  #col.n <- ncol(dt) 
+  last.col <- as.numeric(emptyRow[-1])-1
+  dt1 <- dt[c(7:last.col),]
+  dt1$site <- as.character(dt[3,1])
+  colnames(dt1) <- c("factor","sub_factor","total.veri.P","Active.Veri.Prow","Active.Veri.Pcol","Passive.Veri.Prow","Passive.Veri.Pcol","Active.Recrui.P","Response.Prop","Catchment.P","ratio.activR.Catch","ratio.Veri.Catch","Site")
+ 
+
+  
+  row.1st <- as.numeric(rownames(dt1)[grepl("Total",dt1$factor)])
+  rows.del = row.1st-1
+  rows.del = row.1st-1
+  row_vec <- c(min(as.numeric(row.names(dt1)[grepl("Total",dt1$factor)]))-rows.del, min(as.numeric(row.names(dt1)[grepl("Sex",dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Race",dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Insurance", dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Urbanicity",dt1$factor)]))-rows.del, min(as.numeric(row.names(dt1)[grepl("Socioeconomic",dt1$factor)]))-rows.del,1+nrow(dt1))
+
+  times <- diff(row_vec)
+  groups <- c("Overall","Sex","Race","Insurance","Urbanicity","SES")
+
+  newcol <- NULL
+  for (m in 1:length(groups)){
+  
+  vet <- rep(groups[m],each=times[m])
+  newcol <- c(newcol,vet)
+  
+   }
+ dt1 <- cbind(dt1,newcol)
+ percent <- c("total.veri.P","Active.Veri.Prow","Active.Veri.Pcol","Passive.Veri.Prow","Passive.Veri.Pcol","Active.Recrui.P","Response.Prop","Catchment.P","ratio.activR.Catch","ratio.Veri.Catch")
+ dt2 <- dt1[-(row_vec[-1]),] %>% mutate(across(contains(percent),~ gsub("<1",1,.x)))
+  #tmp[] <- lapply(tmp, gsub, pattern='n/a|-', replacement=NA)
+
+   numbers_only <- function(x) !grepl("\\D", x)
+   digits <- function(x) !grepl("\\d",x)
+  cnames <- names(dt2)
+  #  to check variables in recr_noinact_wl1
+  for (j in 1: length(percent)){
+    varname <- percent[j]
+    var<-pull(dt2,varname)
+    dt2[,percent[j]] <- ifelse(!is.na(var) , as.numeric(as.character(var)),NA)
+  }
+  
+  
+ catch.n <- catchment.kp[f]
+ veri.n <- ifelse(dt1$ratio.Veri.Catch==0, 0,min(round(catch.n*as.numeric(dt1$ratio.Veri.Catch[which(dt1$factor=="Total")])/100,0), round(catch.n*as.numeric(dt1$Response.Prop[which(dt1$factor=="Total")])*as.numeric(dt1$ratio.activR.Catch[which(dt1$factor=="Total")])/(10000),0)))
+ 
+ Active.Veri.n <- round(veri.n*as.numeric(dt1$Active.Veri.Prow[which(dt1$factor=="Total")])/100,0)
+ Passive.Veri.n <- round(veri.n*as.numeric(dt1$Passive.Veri.Prow[which(dt1$factor=="Total")])/100,0)
+ Active.n <- round(catch.n* as.numeric(dt1$ratio.activR.Catch[which(dt1$factor=="Total")])/100,0) 
+ total.rr <- as.numeric(dt1$Response.Prop[which(dt1$factor=="Total")])
+ 
+ dt2 <- dt2 %>% 
+   mutate(Active.Recruits = ifelse(!is.na(Active.Recrui.P),round(catch.n*Catchment.P*ratio.activR.Catch/10000,0),NA), 
+          Catchment.N = ifelse(!is.na(Catchment.P),round(catch.n*Catchment.P/100,0),NA),
+          total.veri.n = ifelse(!is.na(total.veri.P) & ratio.activR.Catch >0, round(0.0001*catch.n*Catchment.P*ratio.Veri.Catch,0), ifelse(ratio.activR.Catch == 0,0,NA)),
+          active.Veri.n = ifelse(!is.na(Active.Veri.Pcol)& ratio.activR.Catch >0, round(total.veri.n*Active.Veri.Prow/100,0), ifelse(ratio.activR.Catch == 0,0,NA)),
+          passive.Veri.n = ifelse(!is.na(Passive.Veri.Pcol) & ratio.activR.Catch >0, round(total.veri.n*Passive.Veri.Prow/100,0), ifelse(ratio.activR.Catch == 0,0,NA)))
+ 
+ kp.nls[[f ]]<- dt2
+
+ 
+ tmp <- dt2 %>%  mutate(race = ifelse(!is.na(factor) & newcol=="Race", factor, ifelse(is.na(factor) & newcol=="Race",lag(factor),NA)))
+ tmp <- tmp %>% mutate(race = ifelse(is.na(race) & newcol=="Race", lag(race), race)) 
+ tmp1 <- tmp %>% mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                                            newcol=="Sex" & factor == "Females" ~ "Female",
+                                            newcol=="Sex" & factor == "Males" ~ "Male",
+                                            newcol=="Sex" & grepl("Other",factor) ~"Sex.Other",
+                                            newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                                            #newcol=="Sex" & factor=="Total" ~"Sex.Total",
+                                            newcol=="Race" & grepl("White",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "White",
+                                            newcol=="Race" & grepl("Asian",race) & grepl("Non-Hispanic|Unknown", sub_factor) ~ "Asian/ Middle Eastern",
+                                            newcol=="Race" & grepl("Black",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "Black/ African-American",
+                                            newcol=="Race" & grepl("Hawaiian",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "Native Hawaiian/ Other Pacific Islander",
+                                            newcol=="Race" & grepl("Indian|Native",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "American Indian/ Alaskan Native",
+                                            newcol=="Race" & grepl("More|Multi-racial|Other",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "Multi-racial/ Other",
+                                            newcol=="Race" & sub_factor=="Hispanic" ~ "Hispanic/ Latinx",
+                                            newcol=="Race" & grepl("Unknown",race) & grepl("Non-Hispanic|Unknown",sub_factor) ~ "Race.Unknown",
+                                            #newcol=="Race" & factor=="Total" ~"Race.Total",
+                                            newcol=="Insurance" & grepl("Private|Commercial",factor) & !grepl("Medic", factor) ~ "Private/Commercial",
+                                            newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                                            newcol=="Insurance" & grepl("Medicaid", factor) ~ "Medicaid",
+                                            newcol=="Insurance" & grepl("VA|Tricare", factor) ~ "Military",
+                                            newcol=="Insurance" & grepl("Other|Worker", factor) ~"Other",
+                                            newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                                            newcol=="Insurance" & grepl("Unknown", factor) ~ "Insurance.Unknown",
+                                            #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                                            newcol=="Urbanicity" & factor == "RUCA Code 1" ~ "RUCA Code 1",
+                                            newcol=="Urbanicity" & grepl("Code 2", factor) ~ "RUCA Code 2",                            
+                                            newcol=="Urbanicity" & grepl("Code 3", factor) ~ "RUCA Code 3",
+                                            newcol=="Urbanicity" & grepl("Code 4", factor) ~ "RUCA Code 4",                            
+                                            newcol=="Urbanicity" & grepl("Code 5", factor) ~ "RUCA Code 5",
+                                            newcol=="Urbanicity" & grepl("Code 6", factor) ~ "RUCA Code 6",                            
+                                            newcol=="Urbanicity" & grepl("Code 7", factor) ~ "RUCA Code 7",
+                                            newcol=="Urbanicity" & grepl("Code 8", factor) ~ "RUCA Code 8",                            
+                                            newcol=="Urbanicity" & grepl("Code 9", factor) ~ "RUCA Code 9",
+                                            newcol=="Urbanicity" & grepl("Code 10",factor)  ~ "RUCA Code 10",
+                                            newcol=="Urbanicity" & grepl("Unknown", factor) ~ "Urbanicity.Unknown", 
+                                            #newcol=="Urbanicity" & grepl("Total", Factor) ~ "Urbanicity.Total", 
+                                            newcol=="SES" & grepl("First Quartile", factor) ~ "First Quartile (ADI scores 1-25)",
+                                            newcol=="SES" & grepl("Second", factor) ~ "Second Quartile (ADI scores 26-50)",
+                                            newcol=="SES" & grepl("Third Quartile", factor) ~ "Third Quartile (ADI scores 51-75)",
+                                            newcol=="SES" & grepl("Fourth Quartile", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                                            newcol=="SES" & grepl("Unknown",factor) ~"SES.Unknown/ Missing",
+                                            #newcol=="SES" & grepl("Total", Factor) ~ "SES.Total"
+))
+ 
+ 
+ vars <- c("Active.Recruits","Catchment.N","total.veri.n", "active.Veri.n","passive.Veri.n")
+ tmp1 <- tmp1 %>%  group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) 
+ tmp2 <- as_tibble(tmp1) %>% 
+   mutate(
+    #response.rate.Total = ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, round(100*as.numeric(total.veri.n)/max(as.numeric(Active.Recruits,na.rm=TRUE)),2)),
+    #ResponseRt.Disparity = round(100*(Response.Rate-total.rr)/total.rr,2),
+    Total = total.veri.n,
+    Active = active.Veri.n,
+    Passive = passive.Veri.n,
+    Verified_percent = round(100*total.veri.n/max(total.veri.n,na.rm=TRUE),2),    
+    Activerecruit = Active.Recruits,
+    ActiveRecruit.Pct = paste0(round(100 * as.numeric(Active.Recruits)/max(as.numeric(Active.Recruits),na.rm=TRUE), 1), " %"),
+    Response.Rate =ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, paste0(round(100 * as.numeric(total.veri.n)/as.numeric(Active.Recruits,na.rm=TRUE),1), " %")),
+    'All eligible' = Catchment.N,
+    AllElligible.pct = paste0(round(100 * as.numeric(Catchment.N)/max(as.numeric(Catchment.N),na.rm=TRUE), 1), " %")) %>% select(newcol,Site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,'All eligible',AllElligible.pct#ResponseRt.Disparity,response.rate.Total
+                      )
+
+ kp.ptls[[f]] <- tmp2
+  }
+return(c(kp.nls,kp.ptls)) 
+}  
+```
+
+```{r}
+#KP site: first quarter aggregate table reports
+dir_kp <- c(172266254866,172267916215,172267744905,172267385751)
+
+site <- c("KPGA","KPNW","KPHI","KPCO")
+catchment.kp <- c(173080, 298425,125709,279691)
+
+###KP sites:  Feb, 2023
+# KP sites: 
+# KPGA: file id: https://nih.app.box.com/file/1130840520630 KPGA_Aggregate Recruitment Metrics_20230202.xlsx 
+# KPHI: file id: https://nih.app.box.com/file/1131242741855 KPHI_Aggregate Recruitment Metrics_20230203.xlsx 
+# KPNW: file id: https://nih.app.box.com/file/1130922715232 KPNW_Aggregate Recruitment Metrics_20230203.xlsx 
+# KPCO: file id: https://nih.app.box.com/file/1107902251738 KPCO_Aggregate Recruitment Metrics_20230106.xlsx
+file_kp<- c("1130840520630","1130922715232","1131242741855") #,"1107902251738"
+
+#KPCO verified:1029 and active recruit: 27418
+  box_setwd(dir_id  = 172267385751)
+  dt <- box_read(file_id=1107902251738)
+dt.race <- dt[c(8:17),]
+
+names(dt.race)[1:16] <- c("factor",paste0("Active.",dt[6,c(2:4)]),paste0("Passive.",dt[6,c(5:7)]),"Total",paste0("activeRecr.",dt[6,c(9:11)]),"ActiveRecr%",paste0("catchment.",dt[6,c(13:15)]),"AllEligible%")
+#dt.race <- apply(dt.race[,c(2:16)],2,gsub("<1","1",.x))
+ numbers_only <- function(x) !grepl("\\D", x)
+  cnames <- names(dt.race)
+  #  to check variables in recr_noinact_wl1
+  for (j in 1: length(cnames)){
+    varname <- cnames[j]
+    var<-pull(dt.race,varname)
+    dt.race[,cnames[j]] <- gsub("<1", "1", var)
+    #dt.race[,cnames[j]] <- ifelse( numbers_only(var) , as.numeric(as.character(var)),var)
+  }
+  
+  for (j in 1: length(cnames)){
+    varname <- cnames[j]
+    var<-pull(dt.race,varname)
+    
+    dt.race[,cnames[j]] <- ifelse( numbers_only(var) , as.numeric(as.character(var)),var)
+  }  
+# dt.race <- dt.race %>% 
+#   mutate(Active= pmap_dbl(across(contains("Active.")), ~ sum(c(...), na.rm = TRUE)),
+#          Passive = pmap_dbl(across(contains("Passive.")), ~ sum(c(...), na.rm = TRUE)))
+
+tmp <- dt.race %>% mutate(new_group = case_when(grepl("Total",factor) ~"Total",
+                                                grepl("White",factor) ~ "Hispanic/ Latinx",
+                                                grepl("Categories",factor) ~"White", 
+                                                grepl("Asian",factor) ~ "Asian/ Middle Eastern",
+                                                grepl("Black",factor)  ~ "Black/ African-American",
+                                                grepl("Hawaiian",factor)  ~ "Native Hawaiian/ Other Pacific Islander",
+                                                grepl("Indian|Native",factor)  ~ "American Indian/ Alaskan Native",
+                                                grepl("More|Multi-racial|Other",factor)  ~ "Multi-racial/ Other",
+                                                grepl("Unknown",factor)  ~ "Race.Unknown"),
+                          Active.pct = ifelse(factor=="Total", Active.Hispanic + `Active.Non-Hispanic`+Active.Unknown,
+                                          ifelse(grepl("White",factor), max(Active.Hispanic,na.rm=TRUE), `Active.Non-Hispanic`+Active.Unknown)),
+                          Passive.pct = ifelse(factor=="Total", Total-(Active.Hispanic + `Active.Non-Hispanic`+Active.Unknown),
+                                           ifelse(grepl("White",factor), max(Passive.Hispanic,na.rm=TRUE), `Passive.Non-Hispanic`+Passive.Unknown)),
+                          Total.pct = ifelse(factor=="Total", Total, ifelse(grepl("White",factor), max(Active.Hispanic,na.rm=TRUE) + max(Passive.Hispanic,na.rm=TRUE), Active.pct + Passive.pct)),
+                          `ActiveRecr%` = ifelse(factor=="Total", `ActiveRecr%`, ifelse(grepl("White",factor), max(activeRecr.Hispanic,na.rm=TRUE), `ActiveRecr%`-activeRecr.Hispanic)),
+                          `AllEligible%` = ifelse(factor=="Total", Total, ifelse(grepl("White",factor), max(catchment.Hispanic,na.rm=TRUE) , `AllEligible%` -catchment.Hispanic)),
+                          newcol="Race") %>% select(factor,Active.pct,Passive.pct,Total.pct,`ActiveRecr%`,`AllEligible%`,newcol,new_group)
+
+
+                                                                                                                        
+dt1 <- dt[c(23:60),c(1:6)] 
+names(dt1) <- c("factor","Active.pct","Passive.pct","Total.pct","ActiveRecr%","AllEligible%")
+percent <- c("Active.pct","Passive.pct","Total.pct","ActiveRecr%","AllEligible%")
+dt2 <- dt1 %>% mutate(across(contains(percent),~ gsub("<1",1,.x)))
+  #tmp[] <- lapply(tmp, gsub, pattern='n/a|-', replacement=NA)
+
+   numbers_only <- function(x) !grepl("\\D", x)
+   digits <- function(x) !grepl("\\d",x)
+  cnames <- names(dt2)
+  #  to check variables in recr_noinact_wl1
+  for (j in 1: length(cnames)){
+    varname <- cnames[j]
+    var<-pull(dt2,varname)
+    dt2[,cnames[j]] <- ifelse(numbers_only(var) , as.numeric(as.character(var)),var)
+  }
+
+  row.1st <- as.numeric(rownames(dt2)[grepl("Total",dt2$factor)])
+  rows.del = row.1st-1
+  rows.del = row.1st-1
+  row_vec <- c(min(as.numeric(row.names(dt2)[grepl("Total",dt2$factor)]))-rows.del, min(as.numeric(row.names(dt2)[grepl("Sex",dt2$factor)]))-rows.del,min(as.numeric(row.names(dt2)[grepl("Insurance", dt2$factor)]))-rows.del,min(as.numeric(row.names(dt2)[grepl("Language",dt2$factor)]))-rows.del,min(as.numeric(row.names(dt2)[grepl("Urbanicity",dt2$factor)]))-rows.del, min(as.numeric(row.names(dt2)[grepl("Socioeconomic",dt2$factor)]))-rows.del,1+nrow(dt2))
+
+  times <- diff(row_vec)
+  groups <- c("Overall","Sex","Insurance","Language","Urbanicity","SES")
+
+  newcol <- NULL
+  for (m in 1:length(groups)){
+  
+  vet <- rep(groups[m],each=times[m])
+  newcol <- c(newcol,vet)
+  
+   }    
+
+
+dt2 <- cbind(dt2,newcol) %>% filter(.,newcol!="Language") %>%
+                     mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
+                            newcol=="Sex" & factor == "Sex" ~ "Female",
+                            newcol=="Sex" & factor == "Males" ~ "Male",
+                            newcol=="Sex" & grepl("Other",factor) ~"Sex.Other",
+                            newcol=="Sex" & grepl("Unknown|Missing", factor) ~"Sex.Unknown/ Missing",
+                            newcol=="Insurance" & grepl("Private|Commercial",factor) & !grepl("Medic", factor) ~ "Private/Commercial",
+                            newcol=="Insurance" & grepl("Medicare",factor) & !grepl("Medicaid", factor) ~ "Medicare",  
+                            newcol=="Insurance" & grepl("Medicaid", factor) ~ "Medicaid",
+                            newcol=="Insurance" & factor =="Insurance" ~ "Medicaid",
+                            newcol=="Insurance" & grepl("VA|Tricare", factor) ~ "Military",
+                            newcol=="Insurance" & grepl("Other|Worker", factor) ~"Other",
+                            newcol=="Insurance" & grepl("Uninsured", factor) ~ "Uninsured",
+                            newcol=="Insurance" & grepl("Unknown", factor) ~ "Insurance.Unknown",
+                                            #newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+                            newcol=="Urbanicity" & grepl("Urbanicity",factor)  ~ "RUCA Code 1",
+                            newcol=="Urbanicity" & grepl("Code 2", factor) ~ "RUCA Code 2",                            
+                            newcol=="Urbanicity" & grepl("Code 3", factor) ~ "RUCA Code 3",
+                            newcol=="Urbanicity" & grepl("Code 4", factor) ~ "RUCA Code 4",                            
+                            newcol=="Urbanicity" & grepl("Code 5", factor) ~ "RUCA Code 5",
+                            newcol=="Urbanicity" & grepl("Code 6", factor) ~ "RUCA Code 6",                            
+                            newcol=="Urbanicity" & grepl("Code 7", factor) ~ "RUCA Code 7",
+                            newcol=="Urbanicity" & grepl("Code 8", factor) ~ "RUCA Code 8",                            
+                            newcol=="Urbanicity" & grepl("Code 9", factor) ~ "RUCA Code 9",
+                            newcol=="Urbanicity" & grepl("Code 10",factor)  ~ "RUCA Code 10",
+                            newcol=="Urbanicity" & grepl("Unknown", factor) ~ "Urbanicity.Unknown", 
+                                            #newcol=="Urbanicity" & grepl("Total", Factor) ~ "Urbanicity.Total", 
+                            newcol=="SES" & grepl("Socioeconomic", factor) ~ "First Quartile (ADI scores 1-25)",
+                            newcol=="SES" & grepl("Second", factor) ~ "Second Quartile (ADI scores 26-50)",
+                            newcol=="SES" & grepl("Third Quartile", factor) ~ "Third Quartile (ADI scores 51-75)",
+                            newcol=="SES" & grepl("Fourth Quartile", factor) ~ "Fourth Quartile (ADI scores 76-100)",
+                            newcol=="SES" & grepl("Unknown",factor) ~ "SES.Unknown/ Missing")) 
+
+dt2 <- dt2[which(rowSums(is.na(dt2[,percent])) < 5 & !grepl("Needed|county|Language", dt2$factor)),]
+
+                            
+                            
+#to combine two datasets: race one and dt2
+dt2 <- bind_rows(dt2, tmp[c(2:10),])
+catch.n <- 279691
+total.veri.n <- 1029 #based on the daily report 1/06/2023
+Active.Recruits <- 27418#based on the daily report 1/06/2023
+
+kpco <- dt2 %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) 
+
+kpco <- as_tibble(kpco) %>% 
+  mutate(Site="KPCO",
+    Total = round(total.veri.n*Total.pct/100,0),
+    Active = round(Active.pct*total.veri.n/100,0),
+    Passive = round(Passive.pct*total.veri.n/100,0),
+    Verified_percent = round(0.01*Total.pct,2),    
+    Activerecruit = round(0.01*Active.Recruits*`ActiveRecr%`,0),
+    ActiveRecruit.Pct = paste0(round(`ActiveRecr%`, 1), " %"),
+    Response.Rate =ifelse(`ActiveRecr%` ==0 | is.na(`ActiveRecr%`),0, paste0(round(100*total.veri.n*Total.pct/(Active.Recruits*`ActiveRecr%`),1), " %")),
+    `All eligible` = round(0.01*catch.n*`AllEligible%`,0),
+    AllElligible.pct = paste0(`AllEligible%`, " %")) %>% select(newcol,Site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,`All eligible`,AllElligible.pct)#ResponseRt.Disparity,response.rate.Total
+     
+kpco$Month <- "Jan-23"
+
+#the other three KP sites with the same formats
+
+#names(dt1) <- c("factor","Active","Passive","Total","Activerecruit","All eligible")
+
+dir_kp <- c("172266254866","172267916215","172267744905") #dir_kpco=172267385751
+file_kp <- c("1130840520630","1130922715232","1131242741855") #file_kpco="1107902251738"
+site <- c("KPGA","KPNW","KPHI") #site="KPCO"
+catchment.kp <- c(173080, 298425,125709) #catchment.kpco=279691
+
+kp3.out.Jan <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+
+```
+
+data for April\~May 2023 of each site
+
+HP: https://nih.app.box.com/file/1206914523362 #Apr HP_aggRpt_2023.05.05.xlsx folder id:[182126420786](https://nih.app.box.com/folder/182126420786)
+
+SF: folder:https://nih.app.box.com/folder/172266418621?s=lzpr4y2my4tusv1m55zm0cby7u56a8hf file id: Site Aggregate Recruitment Metrics Apr 2023 - Deidentified.xlsx file 1185055238854
+
+MF: folder: 172259169880 All Files/CONNECT_DCEG-SITES/CONNECT_MARSHFIELD DCEG/Connect Reports_Marshfield/MF Generated Reports file id: https://nih.app.box.com/file/1185156202278 marshfield_aggregate_recruitment_metrics_2023_4.xlsx (saved on May 25, 2023)
+
+HFH: https://nih.app.box.com/file/1206785719769 (folder id https://nih.app.box.com/folder/206300244548) "Updated_Henry Ford Health Aggregate Recrutiment Metrics Report_4.20.2023_final.xlsx"
+
+UCh:https://nih.app.box.com/file/1206160632248 UChicago_Aggregate_Report_April2023.xlsx (saved in May 24,2023) dir id folder: https://nih.app.box.com/folder/221284526200?s=ul3zlazg7cs4pdz7gpgup9gyzoe5y95u
+
+KP sites: for April, 2023 for the second quarter, 2023 KPGA: file id: https://nih.app.box.com/file/1183033236174 KPHI: file id: https://nih.app.box.com/file/1185194330641 KPCO: file id: https://nih.app.box.com/file/1212582478134 #for May 12, 2023, KPCO doesn't have their April report, I would like to keep the overall Connect aggregate table quarterly KPNW: file id: https://nih.app.box.com/file/1185151865525
+
+```{r}
+#| echo: false
+
+
+#import the April-May data of each site of non KP sites:
+#Apri, 2023 non KP sites
+dir <- c(221284526200,172266418621,172259169880,206300244548,182126420786)
+file_id <- c("1206160632248","1185055238854","1185156202278","1206785719769","1206914523362") 
+site <- c("UCh","SF","MF","HFH","HP")
+#MF_may2023 <- 1206924958687"
+
+
+```
+
+#for aggregate tables Aug. 2023
+
+#Site file links from Mia's email directory_Id file name
+
+\# HFH HFH -  https://nih.app.box.com/file/1278020707143 (see demographic tab only) 221301688533 Henry Ford Health Aggregate Recrutiment Metrics Report_7.31.2023.xlsx
+
+\# Uchicago UChicago - https://nih.app.box.com/file/1277901914340 221284526200?s=ul3zlazg7cs4pdz7gpgup9gyzoe5y95u UChicago_Aggregate_QuarterlyReport_Aug2023.xlsx
+
+\# KPCO KP-CO - https://nih.app.box.com/file/1280598496207 172267385751 KPCO_Aggregate Recruitment Metrics_20230807.xlsx
+
+\# KPNW KP-NW -- https://nih.app.box.com/file/1273235643922 172267916215 KPNW_Aggregate Recruitment Metrics_20230803.xlsx
+
+\# KPHI KP-HI -- https://nih.app.box.com/file/1271701285609 172267744905 KPHI_Aggregate Recruitment Metrics_20230801.xlsx
+
+\# KPGA KP-GA -- https://nih.app.box.com/file/1280598496207 172266254866 KPGA_Aggregate Recruitment Metrics_20230803.xlsx
+
+\# MF MF -- https://nih.app.box.com/file/1277128106345 172259169880 mcri_recruitment_basic_contact_metrics_round2_31JUL23.xlsx #this spreadsheet is totally different
+
+\# HP HP -- https://nih.app.box.com/file/1273754776017 182126420786 HP_aggRpt_2023.08.04.xlsx
+
+\# SF SF -- https://nih.app.box.com/file/1277836775242 172266418621?s=lzpr4y2my4tusv1m55zm0cby7u56a8hf Site Aggregate Recruitment Metrics Aug 2023 - Deidentified.xlsx
+
+\# MF MF: https://nih.app.box.com/file/1277131252774 1277131252774 marshfield_aggregate_recruitment_metrics_clinics_2023_8.xlsx ##updated by Aleah on Oct. 5, 2023
+
+```{r}
+#KP sites
+
+###KP sites:  April, 2023
+# KP sites: for April, 2023 for the second quarter, 2023
+# KPGA: file id: https://nih.app.box.com/file/1183033236174
+# KPHI: file id: https://nih.app.box.com/file/1185194330641
+# KPCO: file id: https://nih.app.box.com/file/1212582478134 #for May 12, 2023, KPCO doesn't have their April report, I would like to keep the overall Connect aggregate table quarterly
+# KPNW: file id: https://nih.app.box.com/file/1185151865525
+dir_kp <- c(172266254866,172267916215,172267744905,172267385751)
+file_kp <- c("1183033236174","1185151865525","1185194330641","1212582478134")
+site <- c("KPGA","KPNW","KPHI","KPCO")
+catchment.kp <- c(173080, 298425,125709,279691)
+
+kp.out.Apr <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+
+##for KP sites Aug, 2023
+dir_kp <- c(172267385751,172267916215,172267744905,172266254866)
+
+file_kp <- c("1275397701569","1273235643922","1271701285609","1280598496207")
+site <- c("KPCO","KPNW","KPHI","KPGA")
+catchment.kp <- c(279691, 298425,125709,173080)
+kp.out.Aug <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+
+```
+
+#Aggregate tables Nov. 2023
+
+[KPGA](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fhsnjtvr75ylpqynd0lj2wiv1yr4fmluj&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=%2B8nT%2BQL4jNNzLZrVsiaoo1PuVtzQa0HCPHbTPRVGqL4%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fhsnjtvr75ylpqynd0lj2wiv1yr4fmluj&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=%2B8nT%2BQL4jNNzLZrVsiaoo1PuVtzQa0HCPHbTPRVGqL4%3D&reserved=0"): https://nih.app.box.com/folder/172266254866
+
+-   KPGA_Aggregate Recruitment Metrics_20231031.xlsx [http://nih.app.box.com/file/1350590915631](https://nih.app.box.com/file/1350590915631)
+
+[KPNW](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267916215&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=T50twuEUQlRYe4wDmUjVIJsbsMoXWyN3scqSxHvp6WY%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267916215&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=T50twuEUQlRYe4wDmUjVIJsbsMoXWyN3scqSxHvp6WY%3D&reserved=0"): https://nih.app.box.com/folder/172267916215
+
+-   KPNW_Aggregate Recruitment Metrics_20231101.xlsx <https://nih.app.box.com/file/1350905245589>
+
+[KPHI](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267744905&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=s1ew1gKrExiQm1cuGov3K1w3xUYKAhSZEH1IHTG7%2FwY%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267744905&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=s1ew1gKrExiQm1cuGov3K1w3xUYKAhSZEH1IHTG7%2FwY%3D&reserved=0"): https://nih.app.box.com/folder/172267744905
+
+-   KPHI_Aggregate Recruitment Metrics_20231102.xlsx <https://nih.app.box.com/file/1351786254162>
+
+[KPCO](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267385751&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=XXPVaEZ8HFcchacI3xY%2B2QCCvEj8%2Ba9qA%2BcnXMySFqw%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172267385751&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=XXPVaEZ8HFcchacI3xY%2B2QCCvEj8%2Ba9qA%2BcnXMySFqw%3D&reserved=0"): https://nih.app.box.com/folder/172267385751
+
+-   KPCO_Aggregate Recruitment Metrics_20231020.xlsx <https://nih.app.box.com/file/1345610070763>
+
+[UChicago](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Ful3zlazg7cs4pdz7gpgup9gyzoe5y95u&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=xCWbJsg7c8o4horalJ%2BbW9EREEbmT8R57dbLxi2L0BU%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Ful3zlazg7cs4pdz7gpgup9gyzoe5y95u&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=xCWbJsg7c8o4horalJ%2BbW9EREEbmT8R57dbLxi2L0BU%3D&reserved=0"): https://nih.app.box.com/folder/221284526200
+
+-   UChicago_Aggregate_QuarterlyReport_Nov2023.xlsx <https://nih.app.box.com/file/1352788763929>
+
+[Sanford](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172266418621%3Fs%3Dlzpr4y2my4tusv1m55zm0cby7u56a8hf&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=Ky5%2BWTWq9neNHMsZDamDpRhZ6XzyWd%2FRGxzOqGq9egc%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F172266418621%3Fs%3Dlzpr4y2my4tusv1m55zm0cby7u56a8hf&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=Ky5%2BWTWq9neNHMsZDamDpRhZ6XzyWd%2FRGxzOqGq9egc%3D&reserved=0"): https://nih.app.box.com/folder/172266418621
+
+-   Site Aggregate Recruitment Metrics November 2023 Deidentified.xlsx <https://nih.app.box.com/file/1350620486383>
+
+[Marshfield](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fof0nmdw5epab1ribbcnnsnn3p8pym8nw&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=iZ%2BSfNKDc2S7LGRB7ZNuKuGuvuUm%2BanuKxI9wcbxhf8%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fof0nmdw5epab1ribbcnnsnn3p8pym8nw&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=iZ%2BSfNKDc2S7LGRB7ZNuKuGuvuUm%2BanuKxI9wcbxhf8%3D&reserved=0"): <https://nih.app.box.com/folder/172259169880>
+
+-   marshfield_aggregate_recruitment_metrics_clinics_2023_11_v3.xlsx <https://nih.app.box.com/file/1365468886947>
+
+[Health Partners](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F182126420786&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=%2FfbzfYxw63Yc%2Bs8OocU2P1LELMp1nUI2vcUSWHvh1gQ%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fnih.app.box.com%2Ffolder%2F182126420786&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=%2FfbzfYxw63Yc%2Bs8OocU2P1LELMp1nUI2vcUSWHvh1gQ%3D&reserved=0"): <https://nih.app.box.com/folder/234046146152>
+
+-   Henry Ford Health Aggregate Recrutiment Metrics Report_10.31.2023.xlsx <https://nih.app.box.com/file/1354757625022>
+
+[Henry Ford](https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fwkuawitvrfo4uogy65vv945pqpx94skl&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=ea9ehZdaFtpyDdykxqSi7HQ87oMc8mxWvIV6PZRRN4o%3D&reserved=0 "https://gcc02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fapp.box.com%2Fs%2Fwkuawitvrfo4uogy65vv945pqpx94skl&data=05%7C01%7Cjing.wu2%40nih.gov%7C94407fb6beba432181d908dbf72875f0%7C14b77578977342d58507251ca2dc2b06%7C0%7C0%7C638375525369563659%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C3000%7C%7C%7C&sdata=ea9ehZdaFtpyDdykxqSi7HQ87oMc8mxWvIV6PZRRN4o%3D&reserved=0") (Folder 2022 and 2023): <https://nih.app.box.com/folder/182126420786>
+
+-   HP_aggRpt_2023.11.07.xlsx <https://nih.app.box.com/file/1355846204475>
+
+```{r}
+#for KPsite Nov. 2023
+file_kp <- c("1350590915631","1350905245589","1351786254162","1345610070763")
+site <- c("KPGA","KPNW","KPHI","KPCO")
+catchment.kp <- c(173080, 298425,125709,279691)
+kp.out.Nov <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+
+
+#KPs <- rbindlist(kp.ptls, use.names=TRUE, fill=TRUE, idcol="id") %>% select("Site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+
+
+```
+
+KP sites:
+
+all the aggregate tables are reported by percentage
+
+Four KP sites still keep with their original percentage aggregate table format as percentage inputs:
+
+KPCO: KPCO_Aggregate Recruitment Metrics_20240129.xlsx:  https://nih.app.box.com/file/1432324856904
+
+KPGA: KPGA_Aggregate Recruitment Metrics_20240131.xlsx https://nih.app.box.com/file/1431092447462?s=u7qjy5t7npk0rj8a7tjfa8pxplxgjj1w
+
+KPHI: KPHI_Aggregate Recruitment Metrics_20240131.xlsx https://nih.app.box.com/file/1431763009896
+
+KPNW: KPNW_Aggregate Recruitment Metrics_20240201.xlsx  https://nih.app.box.com/file/1432461145740
+
+```{r}
+ selections <- c("site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+ 
+dir_kp <- c(172266254866,172267916215,172267744905,172267385751)
+file_kp <- c("1431092447462","1432461145740","1431763009896","1432324856904")
+site <- c("KPGA","KPNW","KPHI","KPCO")
+catchment.kp <- c(173080, 298425,125709,279691)
+kp.out.Feb24 <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+
+```
+
+the function to combine and integrate the summary aggregate tables of all sites by month to get the overall Connect Summary Aggregate table
+
+```{r}
+
+agg.All <- function(kp.ptls, HFH_agg, HP_agg, MF_agg,SF_agg,UCh_agg){
+  k <- length(kp.ptls)
+  KPs <- rbindlist(kp.ptls, use.names=TRUE, fill=TRUE, idcol="id") %>% select("Site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+
+  selections <- c("site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+  non_kps_n <- bind_rows(as_tibble(HFH_agg[,selections]), as_tibble(HP_agg[,selections]),MF_agg[,selections],SF_agg[,selections],UCh_agg[,selections]) 
+
+  names(non_kps_n)[1] <- "Site"
+  vars.n2 <- c("Total","Active","Passive","Activerecruit","All eligible")
+
+
+  Connects <- bind_rows(as_tibble(non_kps_n),as_tibble(KPs))%>% as_tibble()%>% group_by(newcol,new_group) %>% mutate(across(contains(vars.n2),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) %>% as_tibble() 
+
+  vars.n3 <-  c("Total","Activerecruit","All eligible")
+  Connects.group <- as_tibble(Connects) %>% group_by(newcol) %>% mutate(across(contains(vars.n2),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble() %>% 
+    dplyr::rename_with(., ~ paste0(.x,".group"),any_of(vars.n3))
+
+  Connects1 <- left_join(Connects,Connects.group[,c("newcol","Total.group","Activerecruit.group","All eligible.group")], by="newcol") 
+
+  Connects1 <- as_tibble(Connects1) %>% 
+  mutate(Verified_percent = round(100 * as.numeric(Total)/Total.group, 2),
+         Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
+         ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/Activerecruit.group, 1), " %"),
+           AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/`All eligible.group`, 1), " %")) %>%  select(newcol, new_group,contains(vars.n2),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+
+  return(Connects1[,c(1:3,5,9,12,6,8,13,10,14)])
+}
+```
+
+```{r}
+#Overall aggregate Summary tables
+kp4.out.Jan <- list(kpco,kp3.out.Jan[[4]],kp3.out.Jan[[5]],kp3.out.Jan[[6]])
+All_Jan <- agg.All(kp4.out.Jan, HFH_Jan, HP_Jan, MF_Jan,SF_Jan,UCh_Jan)
+
+
+All_Aug <- agg.All(kp.out.Aug[5:8], HFH_Aug, HP_Aug, MF_Aug,SF_Aug,UCh_Aug)
+
+All_Apr <- agg.All(kp.out.Apr[5:8], HFH_Apr, HP_Jan, MF_Apr,SF_Apr,UCh_Apr)
+
+All_Nov <- agg.All(kp.out.Nov[5:8], HFH_Nov, HP_Nov, MF_Nov,SF_Nov,UCh_Nov)
+
+All_Feb24 <- agg.All(kp.out.Feb24[5:8], HFH_Feb24, HP_Feb24, MF_Feb24,SF_Feb24,UCh_Feb24)
+```
+
+#to make plots of Jan-Feb, April-May, August, Nov in 2023, and Jan. 2024 by site
+
+#by Age
+
+```{r}
+
+names(prop) <- c("40-45",	"46-50",	"51-55",	"56-60",	"61-65")
+month <- c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")
+```
+
+```{r}
+#Sex
+data <- prop.ratio_s %>% group_by(Month) %>% 
+  mutate(T_verified= sum(verified), 
+         T_invited = sum(invited),
+         prop = 100*verified/sum(verified), 
+         Ratio = round(100*verified/invited,digits =2),
+         Month = factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")))
+
+###color-blind friendly pannal
+
+ggplot(data[which(data$Sex != "Unknown/Missing" & !grepl("Mar",data$Month)),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE, position = "dodge") + 
+  geom_text(aes(label=round(prop,digits=1), y=prop*0.4), color = "black", size = 3, position = position_dodge(width = 1)) + 
+  geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black", size =3, position = position_dodge(width = 1)) + 
+    scale_fill_manual(values = c("#F8D991","#BEBADA","lightblue"), name="Sex") +
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80),labels = scales::number_format(accuracy = 0.1), sec.axis = sec_axis( ~ . /20,  name = "% of Response Ratio", breaks=c(2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Sex \n All Sites of Connect", x = " ") +
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"),
+           #axis.title.y.right = element_text(size=10,face="bold"),
+           title = element_text(size=9,face="bold"),
+           # Remove panel border
+           panel.border = element_blank(),  
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           # Add axis line
+           axis.line = element_line(colour = "grey"),
+           # Remove the legend
+           legend.title = element_text(size=12,face="bold"),
+           legend.position ="bottom" )
+```
+
+\#
