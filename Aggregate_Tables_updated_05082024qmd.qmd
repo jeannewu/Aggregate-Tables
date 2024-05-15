@@ -1,0 +1,325 @@
+---
+title: "Aggregate_tables_new_formats_05082024"
+author: "Jing WU"
+format: html
+editor: visual
+---
+
+## The updated Aggregate Tables with the new format fixed with xlsm
+
+Now the updated aggregate tables with Jake's format are implemented and applied for all the reported aggregate tables by site.
+
+This is the first batch of the aggregate tables <https://nih.app.box.com/folder/259384732758>
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+#| echo: false
+#| include: false
+#| eval: true
+# [hide] 
+library(data.table) ###to write or read and data management 
+library(boxr) ###read or write data from/to box
+library(tidyverse) ###for data management https://tidyselect.r-lib.org/reference/faq-external-vector.html
+library(dplyr) ###data management some functions are not available in the dplyr masked in the tidyverse
+library(reshape)  ###to work on transition from long to wide or wide to long data
+library(listr) ###to work on a list of vector, files or..
+#library(sqldf) ##sql
+#library(lubridate) ###date time it is already masked in 'tidyverse'
+library(ggplot2) ###plots
+library(ggpubr) ###for the publications of plots
+library(RColorBrewer) ###visions color http://www.sthda.com/english/wiki/colors-in-r
+library(gridExtra)
+#library(stringr) ###to work on patterns, charaters
+library(plyr)
+library(tidyr)
+library(tinytex) #for pdf
+#library(rmarkdown) ###for the output tables into other files: pdf, rtf, etc.
+library(janitor) #to get the summary sum
+library(finalfit) #https://cran.r-project.org/web/packages/finalfit/vignettes/export.html t
+library(expss) ###to add labels
+library(epiDisplay) ##recommended applied here crosstable, tab1
+#library(summarytools) ##recommended not applied in this R code
+library(gmodels) ##recommended but not applied in this R code
+library(magrittr)
+library(arsenal)
+library(gtsummary)
+library(kableExtra)
+#library(patchwork)
+library(rio)
+library(readxl)
+
+
+box_auth(client_id = "627lww8un9twnoa8f9rjvldf7kb56q1m",
+         client_secret = "gSKdYKLd65aQpZGrq9x4QVUNnn5C8qqm")
+#dir = box_setwd(259384732758)
+
+outputpath <- "~/Documents/Connect_projects/Biospecimen_Feb2022/Jing_projects/Mia_Requests/AggregateTables/Outputs/"
+```
+
+the updated aggregated tables each site submitted:
+
+HP: <https://nih.app.box.com/folder/259386008483> file: <https://nih.app.box.com/file/1505217830295?s=407h8r2llaz8fovgydythq6agg6rk6uy>
+
+SF: <https://nih.app.box.com/folder/259383878314> file: <https://nih.app.box.com/file/1524554802988>
+
+MF: <https://nih.app.box.com/folder/259385406649> file: <https://nih.app.box.com/file/1519618538193>
+
+UC: <https://nih.app.box.com/folder/259384455947> file: <https://nih.app.box.com/file/1520595829841>
+
+HFH: <https://nih.app.box.com/folder/259382411754> file: <https://nih.app.box.com/file/1505222110809>
+
+KPNW: <https://nih.app.box.com/folder/259384631615> file: <https://nih.app.box.com/file/1511090284544>
+
+KPCO: <https://nih.app.box.com/folder/259385476163> file: <https://nih.app.box.com/file/1510877346676>
+
+KPHI: <https://nih.app.box.com/folder/259384739537> file: <https://nih.app.box.com/file/1511092808838>
+
+KPGA: <https://nih.app.box.com/folder/259383158062>. File: 1518593346107
+
+names(dt1) \<- c("newcol","race","factor","Active","Passive","ActiveRecruits","AllElligible","InsUnbSES")
+
+```{r}
+#| echo: false
+non-KPsites
+dir_ls <- c(259386008483,259383878314,259385406649,259384455947,259382411754)
+
+for (i in dir_ls){
+  dir =  box_setwd(dir_id = dir[i])
+  box_ls(dir_id=dir,limit=100,max=Inf, field=NULL)
+}#box_ls function doesn't work well with xlsm files
+
+file_ls <- c(1505217830295,1524554802988,1519618538193,1520595829841,1505222110809,1518593346107,1511090284544,1510877346676,1511092808838)
+
+
+
+site <- c("HP","SF","MF","UCh","HFH","KPGA","KPNW","KPCO","KPHI")
+dt <- box_read_excel(file_id=1519618538193,sheet="data_entry")
+n <- ncol(dt)
+dt1 <- dt[c(6:nrow(dt)),c((n-6):n)]
+
+names(dt)[n-5] <- "factor"
+row.1st <- as.numeric(rownames(dt)[grepl("Total",dt$factor)])
+rows.del = row.1st-1 
+
+names(dt1) <-  c("race","factor","Active","Passive","ActiveRecruits","AllElligible","InsUnbSES")
+
+row.names(dt1)[grepl("Total|Sex|Ethnicity|Insurance|Urbanicity|Socioeconomic",dt1$factor)]
+
+  row_vec <- c(min(as.numeric(row.names(dt1)[grepl("Total",dt1$factor)]))-rows.del, min(as.numeric(row.names(dt1)[grepl("Sex",dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Ethnicity",dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Insurance", dt1$factor)]))-rows.del,min(as.numeric(row.names(dt1)[grepl("Urbanicity",dt1$factor)]))-rows.del, min(as.numeric(row.names(dt1)[grepl("Socioeconomic",dt1$factor)]))-rows.del,1+nrow(dt1))
+  
+    times <- diff(row_vec)
+  groups <- c("Overall","Sex","Race","Insurance","Urbanicity","SES")
+
+  newcol <- NULL
+  for (m in 1:length(groups)){
+  
+  vet <- rep(groups[m],each=times[m])
+  newcol <- c(newcol,vet)
+  
+   }
+    tmp <- cbind(dt1,newcol)
+
+  
+
+  tmp$Site <- dt[2,2]
+  vars<- c("Total","Active","Passive","ActiveRecruits","AllElligible")
+
+  numbers_only <- function(x) {
+  ifelse(!grepl("\\D", x), as.numeric(x),NA)}
+  
+tmp <- tmp  %>%
+    mutate(demo_cat = ifelse(!is.na(race) & grepl("Non-Hispanic|Unknown",factor),race,
+                        ifelse(!is.na(race) & factor=="Hispanic", "Hispanic/ Latinx",
+                               factor))) 
+tmp[,c("Active","Passive","ActiveRecruits","AllElligible")] <- sapply(tmp[,c("Active","Passive","ActiveRecruits","AllElligible")],numbers_only)
+
+
+d2.group <- filter(tmp,!grepl("Total|Sex|Ethnicity|Insurance|Urbanicity|Socioeconomic",factor)) %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble() 
+  # %>%  dplyr::rename_with(., ~ paste0(.x,".group"),any_of(vars))
+
+dt2.missing <- as_tibble(dt2.group) %>% select(contains(vars), Site, newcol) %>%
+    mutate(across(where(is.numeric), ~ max(.x)-(.x))) %>% 
+    mutate(demo_cat=ifelse(newcol=="Overall",newcol,ifelse(newcol %in% c("SES","Urbanicity"),
+                            paste0(newcol,".Missing"),paste0(newcol,".Unknown")))) %>% dplyr::rename_with(.,~gsub(".group","",any_of(contains(vars))))
+  
+
+dt2 <- bind_rows(tmp,dt2.missing) %>% filter(.,!grepl("Sex|Ethnicity|Insurance|Urbanicity|Socioeconomic",factor)) %>% 
+  mutate(Total = as.numeric(Active) + as.numeric(Passive)) %>% 
+  group_by(newcol,demo_cat) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(demo_cat, .keep_all = TRUE) %>% as_tibble() 
+ 
+
+ dt2 <- dt2 %>% group_by(demofactor,demo_cat) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(demo_cat, .keep_all = TRUE) %>% as_tibble() 
+
+
+dt2 <- as_tibble(dt2) %>% mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+                                 Response.Rate =ifelse(as.numeric(ActiveRecruits) ==0 | is.na(ActiveRecruits),0, round(100 * as.numeric(Total)/as.numeric(ActiveRecruits,na.rm=TRUE),2)),
+                                 ActiveRecruit.Pct = paste0(round(100 * as.numeric(ActiveRecruits)/max(as.numeric(ActiveRecruits),na.rm=TRUE), 2), " %"),
+                                 AllElligible.pct = paste0(round(100 * as.numeric(AllElligible)/max(as.numeric(AllElligible),na.rm=TRUE), 2), " %")) %>%  select(demofactor,Site, demo_cat,contains(vars),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct) %>% select(demofactor,Site,demo_cat, Total, Active, Passive, Verified_percent, ActiveRecruits, ActiveRecruit.Pct,Response.Rate,AllElligible,AllElligible.pct,factors)
+
+
+# dt1 <- dt1 <- filter(dt1,!is.na(combo)) %>%
+#     mutate(Total = as.numeric(Active) + as.numeric(Passive),
+#            demofactor = str_split_i(combo,"_",1),
+#            new_group= case_when(factors=="Overall"  ~ "Overall",
+#                               factors=="Female"  ~ "Female",
+#                               factors== "Male" ~ "Male",
+#                               grepl("Other",factors) ~"Sex.Other",
+#                               grepl("Unknown|Missing", factors) ~"Sex.Unknown/ Missing",
+#                               #newcol=="Sex" & Factor=="Total" ~"Sex.Total",
+#                               race =="White" & grepl("Non-Hispanic|Unknown",factors) ~ "White",
+#                               grepl("Asian",race) & grepl("Non-Hispanic|Unknown", factors) ~ "Asian/ Middle Eastern",
+#                               grepl("Black",race) & grepl("Non-Hispanic|Unknown",factors) ~ "Black/ African-American",
+#                               grepl("Hawaiian",race) & grepl("Non-Hispanic|Unknown",factors) ~ "Native Hawaiian/ Other Pacific Islander",
+#                               grepl("Native American",race) & grepl("Non-Hispanic|Unknown", factors) ~ "American Indian/ Alaskan Native",
+#                               grepl("Other|Multi-racial",race) & grepl("Non-Hispanic|Unknown", factors) ~ "Multi-racial/ Other",
+#                               factors=="Hispanic" ~ "Hispanic/ Latinx",
+#                               grepl("Unknown",race) & grepl("Non-Hispanic|Unknown",factors) ~ "Race.Unknown",
+#                               
+#                               grepl("Commercial|Private|Employment|Purchase",factors) & !grepl("Medic", factor) ~ "Private/Commercial",
+#                               grepl("Medicare",factors) & !grepl("Medicaid", factors) ~ "Medicare",  
+#                               grepl("Medicaid", factors) ~ "Medicaid",
+#                               grepl("Tricare|VA|Military", factors) ~ "Military",
+#                               grepl("Other|Worker", factors) & !grepl("Public",factors) ~"Other",
+#                               grepl("Uninsured", factors) ~ "Uninsured",
+#                               grepl("Ins",combo) & grepl("Unknown", factors) ~ "Insurance.Unknown",
+#                               newcol=="Insurance" & factor=="Total" ~"Insurance.Total",
+#                               grepl("CODE 1", factors) ~ "RUCA Code 1",
+#                               grepl("CODE 2", factors) ~ "RUCA Code 2",                                                    
+#                               grepl("CODE 3", factors) ~ "RUCA Code 3",
+#                               grepl("CODE 4", factors) ~ "RUCA Code 4",                            
+#                               grepl("CODE 5", factors) ~ "RUCA Code 5",
+#                               grepl("CODE 6", factors) ~ "RUCA Code 6",                            
+#                               grepl("CODE 7", factors) ~ "RUCA Code 7",
+#                               grepl("CODE 8", factors) ~ "RUCA Code 8",                            
+#                               grepl("CODE 9", factors) ~ "RUCA Code 9",
+#                               grepl("CODE 10",factors)  ~ "RUCA Code 10",
+#                               combo=="Urb_missing" & grepl("Unknown|Missing", factors) ~ "Urbanicity.Unknown", 
+#                               #newcol=="Urbanicity" & grepl("Total", factor) ~ "Urbanicity.Total", 
+#                               grepl("First",factors) ~ "First Quartile (ADI scores 1-25)",
+#                               grepl("scores 26-50", factors) ~ "Second Quartile (ADI scores 26-50)",
+#                               grepl("scores 51-75", factors) ~ "Third Quartile (ADI scores 51-75)",
+#                               grepl("scores 76-100", factors) ~ "Fourth Quartile (ADI scores 76-100)",
+#                               grepl("Unknown|Missing",factors) ~"SES.Unknown/ Missing"
+#   ))
+#   
+  
+  dt1.group <- dt1  %>% group_by(demofactor) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(demofactor, .keep_all = TRUE) %>% as_tibble()
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+
+numbers_only <- function(x) {
+  ifelse(!grepl("\\D", x), x, ifelse(grepl("\\D", x),NA,NA))}
+
+
+file_ls <- c(1505217830295,1524554802988,1519618538193,1520595829841,1505222110809,1518593346107,1511090284544,1510877346676,1511092808838)
+
+agg.ls<- list()
+dt.ls <- list()
+
+dt_grp.ls <- list()
+for (f in c(1:9)){
+  file <- file_ls[f]
+  dt <- box_read_excel(file_id=file,sheet="data_entry")
+
+  
+  n <- ncol(dt)
+  names(dt)[n-5] <- "factor"
+   row.1st <- as.numeric(rownames(dt)[grepl("Total",dt$factor)])
+  rows.del = row.1st-1 
+  
+  tmp <- dt[c(6:nrow(dt)),c((n-6):n)]
+  names(tmp) <-  c("race","factor","Active","Passive","ActiveRecruits","AllElligible","InsUnbSES")
+  row.names(tmp)[grepl("Total|Sex|Ethnicity|Insurance|Urbanicity|Socioeconomic",tmp$factor)]
+
+  
+  row_vec <- c(min(as.numeric(row.names(tmp)[grepl("Total",tmp$factor)]))-rows.del, min(as.numeric(row.names(tmp)[grepl("Sex",tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Ethnicity",tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Insurance", tmp$factor)]))-rows.del,min(as.numeric(row.names(tmp)[grepl("Urbanicity",tmp$factor)]))-rows.del, min(as.numeric(row.names(tmp)[grepl("Socioeconomic",tmp$factor)]))-rows.del,1+nrow(tmp))
+  
+  times <- diff(row_vec)
+  groups <- c("Overall","Sex","Race","Insurance","Urbanicity","SES")
+
+  newcol <- NULL
+  for (m in 1:length(groups)){
+  
+  vet <- rep(groups[m],each=times[m])
+  newcol <- c(newcol,vet)
+  
+   }
+    dt1 <- cbind(tmp,newcol)
+
+  
+   dt1$Site <- dt[2,n-6]
+   dt.ls[[f]] <- dt1
+  print(unique(dt1$Site))
+  
+  vars<- c("Total","Active","Passive","ActiveRecruits","AllElligible")
+  
+
+  dt1 <- dt1  %>%
+    mutate(#demofactor = str_split_i(combo,"_",1),
+           demo_cat = ifelse(!is.na(race) & grepl("Non-Hispanic|Unknown",factor),race,
+                        ifelse(!is.na(race) & factor=="Hispanic", "Hispanic/ Latinx",factor)))
+
+
+dt2 <- filter(dt1,!grepl("Sex|Ethnicity|Insurance|Urbanicity|Socioeconomic",factor)) 
+dt2[,c("Active","Passive","ActiveRecruits","AllElligible")] <- sapply(dt2[,c("Active","Passive","ActiveRecruits","AllElligible")],numbers_only)
+
+dt2 <- dt2 %>% mutate(across(contains(vars),~as.numeric(.x))) %>% select(Site,newcol, demo_cat,Active,Passive,ActiveRecruits,AllElligible)
+#dt2 <- dt2 %>% mutate(across(contains(vars), ~ replace_na(0)))
+
+#dt2 <- dt2 %>% mutate(Total =ifelse(is.na(Active), as.numeric(Passive), ifelse(is.na(Passive), as.numeric(Active), as.numeric(Active) + as.numeric(Passive))))
+
+ dt2.group <- dt2  %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble()
+   # %>% dplyr::rename_with(., ~ paste0(.x,".group"),any_of(vars))
+
+dt2.missing <- as_tibble(dt2.group) %>% select(contains(vars), Site, newcol) %>%
+    mutate(across(where(is.numeric), ~ max(.x)-(.x))) %>% 
+    mutate(demo_cat=ifelse(newcol=="Overall",newcol,ifelse(newcol %in% c("SES","Urbanicity"), 
+                            paste0(newcol,".Missing"),paste0(newcol,".Unknown")))) 
+#%>% dplyr::rename_with(.,~gsub(".group","",any_of(contains(vars))))
+  
+dt2 <- bind_rows(dt2,dt2.missing[which(dt2.missing$newcol!="Overall"),])  %>%  as_tibble()  %>%
+  mutate(demo_cat=ifelse(demo_cat %in% c("Unknown","Missing"),paste(newcol,demo_cat,sep="."),demo_cat),
+         Total =ifelse(is.na(Active), as.numeric(Passive), ifelse(is.na(Passive), as.numeric(Active), as.numeric(Active) + as.numeric(Passive)))) %>% group_by(newcol,demo_cat) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(demo_cat, .keep_all = TRUE) %>% as_tibble() 
+ 
+
+
+ print(dt2.group)
+
+
+
+ #tmp2 <- left_join(dt2,dt2.group[,c("newcol","Active.Recruits.group","Catchment.N.group","total.veri.n.group")], by="newcol") 
+ 
+dt2 <- as_tibble(dt2)  %>% mutate(Verified_percent = round(100 * as.numeric(Total)/max(as.numeric(Total),na.rm=TRUE), 2),
+                                 Response.Rate =ifelse(as.numeric(ActiveRecruits) ==0 | is.na(ActiveRecruits),0, round(100 * as.numeric(Total)/as.numeric(ActiveRecruits,na.rm=TRUE),2)),
+                                 ActiveRecruit.Pct = paste0(round(100 * as.numeric(ActiveRecruits)/max(as.numeric(ActiveRecruits),na.rm=TRUE), 2), " %"),
+                                 AllElligible.pct = paste0(round(100 * as.numeric(AllElligible)/max(as.numeric(AllElligible),na.rm=TRUE), 2), " %")) %>%   select(newcol,Site,demo_cat, Total, Active, Passive, Verified_percent, ActiveRecruits, ActiveRecruit.Pct,Response.Rate,AllElligible,AllElligible.pct)
+
+ # tmp2 <- as_tibble(tmp2) %>% 
+ #   mutate(Total = total.veri.n,
+ #          Active = active.Veri.n,
+ #          Passive = passive.Veri.n,
+ #          Verified_percent = round(100*total.veri.n/total.veri.n.group,2),    
+ #          Activerecruit = Active.Recruits,
+ #          ActiveRecruit.Pct = paste0(round(100 * as.numeric(Active.Recruits)/Active.Recruits.group, 1), " %"),
+ #          Response.Rate =ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, paste0(round(100 * as.numeric(total.veri.n)/as.numeric(Active.Recruits,na.rm=TRUE),1), " %")),
+ #          'All eligible' = Catchment.N,
+ #          AllElligible.pct = paste0(round(100 * as.numeric(Catchment.N)/Catchment.N.group, 1), " %")) %>% select(newcol,Site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,'All eligible',AllElligible.pct#ResponseRt.Disparity,response.rate.Total
+ #                      )
+ # 
+
+
+names(dt2)[3:12] <- c("Demographic Factors", "Total Verified","Active","Passive", "% of Verified", "Active Recruits", "% of Active Recruits","Response Ratio","Eligible Catchment Population","% Eligible")
+agg.ls[[f]] <- dt2
+
+write.csv(dt2,file=paste(outputpath,unique(dt2$Site),"_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
+}
+
+write.csv(agg.ls[[3]],file=paste(outputpath,"MFH_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
+
+```
