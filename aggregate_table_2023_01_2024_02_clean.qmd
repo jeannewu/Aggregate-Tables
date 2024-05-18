@@ -49,9 +49,13 @@ library(kableExtra)
 library(rio)
 library(readxl)
 
+#for the color-blind friendly panels
+library(rcartocolor)
+library(viridis)
 
-box_auth(client_id = client,
-         client_secret = secret)
+usethis::edit_r_environ()
+box_auth(client_id = BOX_CLIENT_ID,
+         client_secret = BOX_CLIENT_SECRET)
 ```
 
 The aggregate tables from each site folder in the Connect_DCEG_site ##for the first quarter in 2023 of nine Connect sites:
@@ -784,7 +788,7 @@ The `function to input and generate the lists of aggregate tables from original 
 
 ```{r}
 
-KP.agg.ls <- function(dir_kp,file_kp,catchment.kp){
+KP.agg.ls <- function(dir_kp,file_kp,catchment.kp,month){
   
  kp.nls <- list()
  kp.ptls <- list()
@@ -799,14 +803,14 @@ for (f in 1:n){
   dt<- dt[,!empty_columns]
   #names(dt) <- dt[3,]
   
-
+  month <- month
   #empty_rows <-rowSums(is.na(dt)| dt == "") == ncol(dt)
 
   #col.n <- ncol(dt) 
   last.col <- as.numeric(emptyRow[-1])-1
   dt1 <- dt[c(7:last.col),]
   dt1$site <- as.character(dt[3,1])
-  colnames(dt1) <- c("factor","sub_factor","total.veri.P","Active.Veri.Prow","Active.Veri.Pcol","Passive.Veri.Prow","Passive.Veri.Pcol","Active.Recrui.P","Response.Prop","Catchment.P","ratio.activR.Catch","ratio.Veri.Catch","Site")
+  colnames(dt1) <- c("factor","sub_factor","total.veri.P","Active.Veri.Prow","Active.Veri.Pcol","Passive.Veri.Prow","Passive.Veri.Pcol","Active.Recrui.P","Response.Prop","Catchment.P","ratio.activR.Catch","ratio.Veri.Catch","site")
  
 
   
@@ -827,10 +831,13 @@ for (f in 1:n){
    }
  dt1 <- cbind(dt1,newcol)
  percent <- c("total.veri.P","Active.Veri.Prow","Active.Veri.Pcol","Passive.Veri.Prow","Passive.Veri.Pcol","Active.Recrui.P","Response.Prop","Catchment.P","ratio.activR.Catch","ratio.Veri.Catch")
- dt2 <- dt1[-(row_vec[-1]),] %>% mutate(across(contains(percent),~ gsub("<1",1,.x)))
-  #tmp[] <- lapply(tmp, gsub, pattern='n/a|-', replacement=NA)
+ 
+   race.sq <- str_split_i(dt1$factor[which(dt1$newcol=="Race" & dt1$factor !="Race" & !is.na(dt1$factor))],"\\. ",2)
+  dt1$race <-  ifelse(dt1$newcol=="Race",c(rep(NA, times=row_vec[3]),rep(race.sq,each=(row_vec[4]-row_vec[3]-1)/length(race.sq))),NA)
 
-   numbers_only <- function(x) !grepl("\\D", x)
+ dt2 <- dt1[-(row_vec[-1]),] %>% mutate(across(contains(percent),~ gsub("<1",1,.x)))
+ 
+     numbers_only <- function(x) !grepl("\\D", x)
    digits <- function(x) !grepl("\\d",x)
   cnames <- names(dt2)
   #  to check variables in recr_noinact_wl1
@@ -850,7 +857,8 @@ for (f in 1:n){
  total.rr <- as.numeric(dt1$Response.Prop[which(dt1$factor=="Total")])
  
  dt2 <- dt2 %>% 
-   mutate(Active.Recruits = ifelse(!is.na(Active.Recrui.P),round(catch.n*Catchment.P*ratio.activR.Catch/10000,0),NA), 
+   mutate(Month=month,
+          Active.Recruits = ifelse(!is.na(Active.Recrui.P),round(catch.n*Catchment.P*ratio.activR.Catch/10000,0),NA), 
           Catchment.N = ifelse(!is.na(Catchment.P),round(catch.n*Catchment.P/100,0),NA),
           total.veri.n = ifelse(!is.na(total.veri.P) & ratio.activR.Catch >0, round(0.0001*catch.n*Catchment.P*ratio.Veri.Catch,0), ifelse(ratio.activR.Catch == 0,0,NA)),
           active.Veri.n = ifelse(!is.na(Active.Veri.Pcol)& ratio.activR.Catch >0, round(total.veri.n*Active.Veri.Prow/100,0), ifelse(ratio.activR.Catch == 0,0,NA)),
@@ -859,8 +867,7 @@ for (f in 1:n){
  kp.nls[[f ]]<- dt2
 
  
- tmp <- dt2 %>%  mutate(race = ifelse(!is.na(factor) & newcol=="Race", factor, ifelse(is.na(factor) & newcol=="Race",lag(factor),NA)))
- tmp <- tmp %>% mutate(race = ifelse(is.na(race) & newcol=="Race", lag(race), race)) 
+  tmp <- filter(dt2,(grepl("Hispanic|Unknown",sub_factor) | is.na(sub_factor))) %>% mutate(factor = ifelse(newcol=="Race",race, factor))
  tmp1 <- tmp %>% mutate(new_group= case_when(newcol=="Overall" & factor=="Total" ~ "Overall",
                                             newcol=="Sex" & factor == "Females" ~ "Female",
                                             newcol=="Sex" & factor == "Males" ~ "Male",
@@ -906,26 +913,28 @@ for (f in 1:n){
  
  
  vars <- c("Active.Recruits","Catchment.N","total.veri.n", "active.Veri.n","passive.Veri.n")
- tmp1 <- tmp1 %>%  group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) 
- tmp2 <- as_tibble(tmp1) %>% 
-   mutate(
-    #response.rate.Total = ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, round(100*as.numeric(total.veri.n)/max(as.numeric(Active.Recruits,na.rm=TRUE)),2)),
-    #ResponseRt.Disparity = round(100*(Response.Rate-total.rr)/total.rr,2),
-    Total = total.veri.n,
-    Active = active.Veri.n,
-    Passive = passive.Veri.n,
-    Verified_percent = round(100*total.veri.n/max(total.veri.n,na.rm=TRUE),2),    
-    Activerecruit = Active.Recruits,
-    ActiveRecruit.Pct = paste0(round(100 * as.numeric(Active.Recruits)/max(as.numeric(Active.Recruits),na.rm=TRUE), 1), " %"),
-    Response.Rate =ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, paste0(round(100 * as.numeric(total.veri.n)/as.numeric(Active.Recruits,na.rm=TRUE),1), " %")),
-    'All eligible' = Catchment.N,
-    AllElligible.pct = paste0(round(100 * as.numeric(Catchment.N)/max(as.numeric(Catchment.N),na.rm=TRUE), 1), " %")) %>% select(newcol,Site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,'All eligible',AllElligible.pct#ResponseRt.Disparity,response.rate.Total
-                      )
+ tmp1 <- tmp1 %>%  group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE)
+ 
+ tmp.group <- tmp %>% group_by(newcol) %>% mutate(across(contains(vars),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble() %>% 
+    dplyr::rename_with(., ~ paste0(.x,".group"),any_of(vars))
 
- kp.ptls[[f]] <- tmp2
+ tmp2 <- left_join(tmp1,tmp.group[,c("newcol","Active.Recruits.group","Catchment.N.group","total.veri.n.group")], by="newcol") 
+ tmp2 <- as_tibble(tmp2) %>% 
+   mutate(Total = total.veri.n,
+          Active = active.Veri.n,
+          Passive = passive.Veri.n,
+          Verified_percent = round(100*total.veri.n/total.veri.n.group,2),    
+          Activerecruit = Active.Recruits,
+          ActiveRecruit.Pct = paste0(round(100 * as.numeric(Active.Recruits)/Active.Recruits.group, 1), " %"),
+          Response.Rate =ifelse(as.numeric(Active.Recruits) ==0 | is.na(Active.Recruits),0, paste0(round(100 * as.numeric(total.veri.n)/as.numeric(Active.Recruits,na.rm=TRUE),1), " %")),
+          'All eligible' = Catchment.N,
+          AllElligible.pct = paste0(round(100 * as.numeric(Catchment.N)/Catchment.N.group, 1), " %")) %>% select(newcol,site,Month, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,'All eligible',AllElligible.pct)
+  kp.ptls[[f]] <- tmp2
+
   }
-return(c(kp.nls,kp.ptls)) 
-}  
+  return(c(kp.nls,kp.ptls)) 
+} 
+
 ```
 
 ```{r}
@@ -1069,7 +1078,7 @@ Active.Recruits <- 27418#based on the daily report 1/06/2023
 kpco <- dt2 %>% group_by(newcol,new_group) %>% mutate(across(contains(vars),~sum(.x,na.rm=TRUE))) %>% distinct(new_group, .keep_all = TRUE) 
 
 kpco <- as_tibble(kpco) %>% 
-  mutate(Site="KPCO",
+  mutate(site="KPCO",
     Total = round(total.veri.n*Total.pct/100,0),
     Active = round(Active.pct*total.veri.n/100,0),
     Passive = round(Passive.pct*total.veri.n/100,0),
@@ -1078,9 +1087,9 @@ kpco <- as_tibble(kpco) %>%
     ActiveRecruit.Pct = paste0(round(`ActiveRecr%`, 1), " %"),
     Response.Rate =ifelse(`ActiveRecr%` ==0 | is.na(`ActiveRecr%`),0, paste0(round(100*total.veri.n*Total.pct/(Active.Recruits*`ActiveRecr%`),1), " %")),
     `All eligible` = round(0.01*catch.n*`AllEligible%`,0),
-    AllElligible.pct = paste0(`AllEligible%`, " %")) %>% select(newcol,Site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,`All eligible`,AllElligible.pct)#ResponseRt.Disparity,response.rate.Total
+    AllElligible.pct = paste0(`AllEligible%`, " %")) %>% select(newcol,site, new_group,Total, Active,Passive,Verified_percent, Activerecruit,ActiveRecruit.Pct, Response.Rate,`All eligible`,AllElligible.pct)#ResponseRt.Disparity,response.rate.Total
      
-kpco$Month <- "Jan-23"
+kpco$Month <- "Feb-23"
 
 #the other three KP sites with the same formats
 
@@ -1091,7 +1100,7 @@ file_kp <- c("1130840520630","1130922715232","1131242741855") #file_kpco="110790
 site <- c("KPGA","KPNW","KPHI") #site="KPCO"
 catchment.kp <- c(173080, 298425,125709) #catchment.kpco=279691
 
-kp3.out.Jan <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+kp3.out.Jan <- KP.agg.ls(dir_kp,file_kp,catchment.kp,"Feb-23")
 
 ```
 
@@ -1161,15 +1170,15 @@ file_kp <- c("1183033236174","1185151865525","1185194330641","1212582478134")
 site <- c("KPGA","KPNW","KPHI","KPCO")
 catchment.kp <- c(173080, 298425,125709,279691)
 
-kp.out.Apr <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+kp.out.Apr <- KP.agg.ls(dir_kp,file_kp,catchment.kp,"May-23")
 
 ##for KP sites Aug, 2023
-dir_kp <- c(172267385751,172267916215,172267744905,172266254866)
+dir_kp <- c(172266254866,172267916215,172267744905,172267385751)
 
-file_kp <- c("1275397701569","1273235643922","1271701285609","1280598496207")
-site <- c("KPCO","KPNW","KPHI","KPGA")
-catchment.kp <- c(279691, 298425,125709,173080)
-kp.out.Aug <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+file_kp <- c("1280598496207","1273235643922","1271701285609","1275397701569")
+site <- c("KPGA","KPNW","KPHI","KPCO")
+catchment.kp <- c(173080, 298425,125709,279691)
+kp.out.Aug <- KP.agg.ls(dir_kp,file_kp,catchment.kp,"Aug-23")
 
 ```
 
@@ -1216,7 +1225,7 @@ kp.out.Aug <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
 file_kp <- c("1350590915631","1350905245589","1351786254162","1345610070763")
 site <- c("KPGA","KPNW","KPHI","KPCO")
 catchment.kp <- c(173080, 298425,125709,279691)
-kp.out.Nov <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+kp.out.Nov <- KP.agg.ls(dir_kp,file_kp,catchment.kp,"Nov-23")
 
 
 #KPs <- rbindlist(kp.ptls, use.names=TRUE, fill=TRUE, idcol="id") %>% select("Site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
@@ -1245,7 +1254,7 @@ dir_kp <- c(172266254866,172267916215,172267744905,172267385751)
 file_kp <- c("1431092447462","1432461145740","1431763009896","1432324856904")
 site <- c("KPGA","KPNW","KPHI","KPCO")
 catchment.kp <- c(173080, 298425,125709,279691)
-kp.out.Feb24 <- KP.agg.ls(dir_kp,file_kp,catchment.kp)
+kp.out.Feb24 <- KP.agg.ls(dir_kp,file_kp,catchment.kp,"Feb-24")
 
 ```
 
@@ -1255,9 +1264,9 @@ the function to combine and integrate the summary aggregate tables of all sites 
 
 agg.All <- function(kp.ptls, HFH_agg, HP_agg, MF_agg,SF_agg,UCh_agg){
   k <- length(kp.ptls)
-  KPs <- rbindlist(kp.ptls, use.names=TRUE, fill=TRUE, idcol="id") %>% select("Site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+  KPs <- rbindlist(kp.ptls, use.names=TRUE, fill=TRUE, idcol="id") %>% select("site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
 
-  selections <- c("site","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
+  selections <- c("site","Month","newcol","new_group","Total","Active","Passive","Activerecruit","All eligible")
   non_kps_n <- bind_rows(as_tibble(HFH_agg[,selections]), as_tibble(HP_agg[,selections]),MF_agg[,selections],SF_agg[,selections],UCh_agg[,selections]) 
 
   names(non_kps_n)[1] <- "Site"
@@ -1276,10 +1285,12 @@ agg.All <- function(kp.ptls, HFH_agg, HP_agg, MF_agg,SF_agg,UCh_agg){
   mutate(Verified_percent = round(100 * as.numeric(Total)/Total.group, 2),
          Response.Rate =ifelse(as.numeric(Activerecruit) ==0 | is.na(Activerecruit),0, round(100 * as.numeric(Total)/as.numeric(Activerecruit,na.rm=TRUE),2)),
          ActiveRecruit.Pct = paste0(round(100 * as.numeric(Activerecruit)/Activerecruit.group, 1), " %"),
-           AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/`All eligible.group`, 1), " %")) %>%  select(newcol, new_group,contains(vars.n2),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct)
+           AllElligible.pct = paste0(round(100 * as.numeric(`All eligible`)/`All eligible.group`, 1), " %")) %>%  select(newcol,Month, new_group,contains(vars.n2),Verified_percent, Response.Rate,ActiveRecruit.Pct,AllElligible.pct) %>% select(newcol,Month, new_group,Total,Active,Passive,Verified_percent,Activerecruit, Response.Rate,ActiveRecruit.Pct,`All eligible`,AllElligible.pct,Total.group,Activerecruit.group,`All eligible.group`)
 
-  return(Connects1[,c(1:3,5,9,12,6,8,13,10,14)])
+  return(Connects1)
 }
+
+#[,c(1:3,5,9,12,6,8,13,10,14)]
 ```
 
 ```{r}
@@ -1690,20 +1701,35 @@ table(recr_age[which(recr_age$d_512820379==486306141 & recr_age$recru_time < '20
 # 27376 19939 20194 18280 26747  
 ```
 
+for the color blind friendly panels:
+
+https://cran.r-project.org/web/packages/colorBlindness/vignettes/colorBlindness.html
+
+a\. To use a color scale that works somewhat better for people with color-vision deficiency, we recommend `scale_color_OkabeIto` and `scale_fill_OkabeIto`:
+
+b\. https://www.nceas.ucsb.edu/sites/default/files/2022-06/Colorblind%20Safe%20Color%20Schemes.pdf
+
+c\. https://thenode.biologists.com/data-visualization-with-flying-colors/research/
+
+d\. https://rdrr.io/cran/colorBlindness/src/R/palette.R
+
+<https://colorbrewer2.org/#type=diverging&scheme=PuOr&n=10>: this website is very helpful to help you visualize and select the proper colors, especially for any color-blind friendly ones.
+
 ```{r}
 
+library(colorblindr)
+library(colorBlindness)
+library(rcartocolor)
 
 
-
-names(prop) <- c("40-45",	"46-50",	"51-55",	"56-60",	"61-65")
-month <- c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")
 ```
 
-#Plot for Sex by month
+#Plot for Sex by month,
+
+After several testing with datasets of nine Sites on their aggregate tables ( verified % vs response rate) by month, I had developed the function (Sex_plot(dt.combo (dt1,dt2,dt3,dt4,dt5), Site) )to plot the Verified% vs response rate of by Sex during this time period (Jan-Feb, 2023 \~ Feb. 2024)
 
 ```{r}
 #Sex
-
 Sex_time <- function(dt.combo,Site){
   
 data <- dt.combo %>% 
@@ -1716,16 +1742,32 @@ data <- dt.combo %>%
          Month = factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")))
 }
 ###color-blind friendly pannal
-max_n <- 10*round(max(c(0.1*data$prop[!grepl("Missing|Unknown")],data$Ratio[!grepl("Missing|Unknown")]))
+
+Sex_plot <- function(dt.combo,Site){
+  
+data <- dt.combo %>% 
+  filter(.,newcol=="Sex") %>% select(site, Month,newcol,new_group,Total,Activerecruit)%>% 
+ group_by(Month) %>% dplyr::rename(Sex=new_group) %>%
+  mutate(T_verified= sum(Total), 
+         T_invited = sum(Activerecruit),
+         prop = 100*Total/sum(Total), 
+         Ratio = round(100*Total/Activerecruit,digits =2),
+         Month = factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")))
+
+Site <- Site
+max_y <- 10*round(max(c(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)]),max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]))),0)
+T <- 10*round(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)])/max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]),0)
+breaks_1 <- seq(20,max_y,20)
+breaks_2 <- seq(1,0.1*max_y,1) 
           
-ggplot(data[!grepl("Missing|Unknown",data$Sex),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
+ggplot(data[!grepl("Missing|Unknown|Other",data$Sex),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
     geom_bar(stat="identity",na.rm=TRUE, position = "dodge") + 
     geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1)) + 
-    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black", size =3, position = position_dodge(width = 0.9)) + 
+    geom_label(aes(y=Ratio*T,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black", size =3, position = position_dodge(width = 0.9),show.legend=F) + 
     scale_fill_manual(values = c("#F8D991","#BEBADA","lightblue"), name="Sex") +
-    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80),labels = scales::number_format(accuracy = 0.1), sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,3.0,4.0,5.0,6.0),labels = scales::number_format(accuracy = 0.1))) + 
+    scale_y_continuous( name="% of Total Verified", breaks=breaks_1,labels = scales::number_format(accuracy = 0.1), sec.axis = sec_axis( ~ . /T,  name = "% of Response Ratio", breaks=breaks_2,labels = scales::number_format(accuracy = 0.1))) + 
     guides(fill = guide_legend( override.aes = aes(label = ""))) +
-    #labs( title=paste0("Total % of Verified Participants and Response Ratio by Sex \n", Site,"\""), x = " ") +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by Sex \n", Site,"\""), x = " ") +
     theme( axis.title.x = element_text( size = 14, face = "bold"),
            axis.title.y = element_text(size = 14, face = "bold"),
            #axis.title.y.right = element_text(size=10,face="bold"),
@@ -1743,28 +1785,97 @@ ggplot(data[!grepl("Missing|Unknown",data$Sex),], mapping=aes(x = Month,fill=Sex
            legend.title = element_text(size=12,face="bold"),
            legend.position ="bottom" )
 
+}
 ```
 
 #All Sites of Connect
+
+```{r}
+ plt.combo.UC <- bind_rows(UCh_Jan,UCh_Apr, UCh_Aug, UCh_Nov, UCh_Feb24) 
+ Sex_plot(plt.combo.UC,"University of Chicago Medicine") 
+ 
+ plt.combo.SF <- bind_rows(SF_Jan,SF_Apr, SF_Aug, SF_Nov, SF_Feb24) 
+ Sex_plot(plt.combo.SF,"Sanford Health") 
+ 
+ plt.combo.MF <- bind_rows(MF_Jan,MF_Apr, MF_Aug, MF_Nov, MF_Feb24) 
+ Sex_plot(plt.combo.MF,"Marshfield Clinic Health System") 
+ 
+ plt.combo.HFH <- bind_rows(HFH_Jan,HFH_Apr, HFH_Aug, HFH_Nov, HFH_Feb24)  
+ Sex_plot(plt.combo.HFH,"Henry Ford Health System") 
+ 
+ plt.combo.HP <- bind_rows(HP_Jan,HP_Apr, HP_Aug, HP_Nov, HP_Feb24) 
+ Sex_plot(plt.combo.HP,"HealthPartners") 
+
+ plt.combo.kpga <- bind_rows(kp3.out.Jan[[4]],kp.out.Apr[[5]], kp.out.Aug[[5]], kp.out.Nov[[5]], kp.out.Feb24[[5]]) 
+ Sex_plot(plt.combo.kpga,"Kaiser Permanente Georgia") 
+ 
+ plt.combo.kpnw <- bind_rows(kp3.out.Jan[[5]],kp.out.Apr[[6]], kp.out.Aug[[6]], kp.out.Nov[[6]], kp.out.Feb24[[6]]) 
+ Sex_plot(plt.combo.kpnw,"Kaiser Permanente Northwest") 
+ 
+ plt.combo.kphi <- bind_rows(kp3.out.Jan[[6]],kp.out.Apr[[7]], kp.out.Aug[[7]], kp.out.Nov[[7]], kp.out.Feb24[[7]]) 
+ Sex_plot(plt.combo.kphi,"Kaiser Permanente Hawaii") 
+ 
+ plt.combo.kpco <- bind_rows(kpco,kp.out.Apr[[8]], kp.out.Aug[[8]], kp.out.Nov[[8]], kp.out.Feb24[[8]]) 
+ Sex_plot(plt.combo.kpco,"Kaiser Permanente Colorado") 
+ 
+  plt.combo.all <- bind_rows(All_Jan, All_Apr,All_Aug, All_Nov, All_Feb24) 
+ plt.combo.all$site <- "All"
+ Sex_plot(plt.combo.all,"All Sites of Connect")  
+
+ data <- Sex_time(plt.combo.all,"All Sites of Connect")
+ 
+ Site <- Site
+max_y <- 10*round(max(c(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)]),max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]))),0)
+T <- 10*round(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)])/max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]),0)
+breaks_1 <- seq(20,max_y,20)
+breaks_2 <- seq(1,0.1*max_y,1) 
+          
+ggplot(data[!grepl("Missing|Unknown|Other",data$Sex),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1)) + 
+    geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black", size =3, position = position_dodge(width = 0.9),show.legend=F) + 
+    scale_fill_manual(values = c("#F8D991","#BEBADA","lightblue"), name="Sex") +
+    scale_y_continuous( name="% of Total Verified", breaks=breaks_1,labels = scales::number_format(accuracy = 0.1), sec.axis = sec_axis( ~ . /20,  name = "% of Response Ratio", breaks=breaks_2,labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by Sex \n", Site,"\""), x = " ") +
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"),
+           #axis.title.y.right = element_text(size=10,face="bold"),
+           title = element_text(size=9,face="bold"),
+           # Remove panel border
+           panel.border = element_blank(),  
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           # Add axis line
+           axis.line = element_line(colour = "grey"),
+           # Remove the legend
+           legend.title = element_text(size=12,face="bold"),
+           legend.position ="bottom" )
+```
+
+#below, the testing records for sex plot.
 
 ```{r}
 
 #Site = factor(Site, levels=c("HealthPartners", "Henry Ford Health System","Marshfield Clinic Health System",
                                       "Sanford Health", "University of Chicago Medicine","Kaiser Permanente Colorado",
                                       "Kaiser Permanente Georgia","Kaiser Permanente Hawaii","Kaiser Permanente Northwest")))
- plt.combo <- bind_rows(UCh_Jan,UCh_Apr, UCh_Aug, UCh_Nov, UCh_Feb24) 
+ plt.combo.UC <- bind_rows(UCh_Jan,UCh_Apr, UCh_Aug, UCh_Nov, UCh_Feb24) 
  sex_plot(plt.dt,"University of Chicago Medicine") 
- data <- Sex_time(plt.combo,"University of Chicago Medicine")
+ data <- Sex_time(plt.combo.UC,"University of Chicago Medicine")
  
- plt.combo <- bind_rows(SF_Jan,SF_Apr, SF_Aug, SF_Nov, SF_Feb24) 
- data <- Sex_time(plt.combo,"Sanford Health") 
+ plt.combo.SF <- bind_rows(SF_Jan,SF_Apr, SF_Aug, SF_Nov, SF_Feb24) 
+ data <- Sex_time(plt.combo.SF,"Sanford Health") 
  Site <- "Sanford Health"
  max_y <- 10*round(max(c(0.1*max(data$prop[!grepl("Missing|Unknown",data$Sex)]),max(data$Ratio[!grepl("Missing|Unknown",data$Sex)]))),0)
  T <- 10*round(0.1*max(data$prop[!grepl("Missing|Unknown",data$Sex)])/max(data$Ratio[!grepl("Missing|Unknown",data$Sex)]),0)
  breaks_1 <- seq(20,max_y,20)
  breaks_2 <- seq(1,0.1*max_y,1) 
  
-ggplot(data[!grepl("Missing|Unknown",data$Sex),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
+ggplot(data[!grepl("Missing|Unknown|Other",data$Sex),], mapping=aes(x = Month,fill=Sex, y = prop)) + 
     geom_bar(stat="identity",na.rm=TRUE, position = "dodge") + 
     geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1)) + 
     geom_label(aes(y=Ratio*T,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black", size =3, position = position_dodge(width = 0.9)) + 
@@ -1790,10 +1901,10 @@ ggplot(data[!grepl("Missing|Unknown",data$Sex),], mapping=aes(x = Month,fill=Sex
            legend.position ="bottom" )
 
 
- plt.combo <- bind_rows(MF_Jan,MF_Apr, MF_Aug, MF_Nov, MF_Feb24) 
- data <- Sex_time(plt.combo,"Marshfield Clinic Health System") 
+ plt.combo.MF <- bind_rows(MF_Jan,MF_Apr, MF_Aug, MF_Nov, MF_Feb24) 
+ data <- Sex_time(plt.combo.MF,"Marshfield Clinic Health System") 
  
- plt.combo <- bind_rows(HFH_Jan,HFH_Apr, HFH_Aug, HFH_Nov, HFH_Feb24) 
+ plt.combo.HFH<- bind_rows(HFH_Jan,HFH_Apr, HFH_Aug, HFH_Nov, HFH_Feb24) 
 data <- Sex_time(plt.combo,"Henry Ford Health System") 
 Site <- "Henry Ford Health System"
 max_y <- 10*round(max(c(0.1*max(data$prop[!grepl("Missing|Unknown",data$Sex)]),max(data$Ratio[!grepl("Missing|Unknown",data$Sex)]))),0)
@@ -1826,6 +1937,1002 @@ ggplot(data[!grepl("Missing|Unknown",data$Sex),], mapping=aes(x = Month,fill=Sex
            legend.title = element_text(size=12,face="bold"),
            legend.position ="bottom" )
 
+##for the kp site data:
 
+plt.combo.kpga <- bind_rows(kp3.out.Jan[[4]],kp.out.Apr[[5]], kp.out.Aug[[5]], kp.out.Nov[[5]], kp.out.Feb24[[5]]) 
+ data <- Sex_time(plt.combo.kpga,"Kaiser Permanente Georgia") 
+ 
+
+max_y <- 10*round(max(c(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)]),max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]))),0)
+T <- 10*round(0.1*max(data$prop[!grepl("Missing|Unknown|Other",data$Sex)])/max(data$Ratio[!grepl("Missing|Unknown|Other",data$Sex)]),0)
+breaks_1 <- seq(20,max_y,20)
+breaks_2 <- seq(1,0.1*max_y,1) 
+
+```
+
+##for Race
+
+```{r}
+# "HealthPartners", "Henry Ford Health System","Marshfield Clinic Health System", "Sanford Health", "University of Chicago Medicine","Kaiser Permanente Colorado", "Kaiser Permanente Georgia","Kaiser Permanente Hawaii","Kaiser Permanente Northwest"
+# color-blindly friendly one with gray, and one with black (palettes source: http://jfly.iam.u-tokyo.ac.jp/color/). The palette with grey:
+cbp1 <- c("#CC79A7", "#E69F00", "#56B4E9", "#F0E442",
+          "#009E73", "#0072B2", "#D55E00", "#999999")
+
+# The palette with black:
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+race_dt <- function(dt.combo,Race){
+data <- dt.combo %>% 
+  filter(.,newcol=="Race") %>% select(site, Month,newcol,new_group,Total,Activerecruit)%>% 
+ group_by(Month) %>% dplyr::rename(Race=new_group) %>% group_by(Month) %>% 
+  mutate(T_verified= sum(Total), 
+         T_invited = sum(Activerecruit),
+         prop = 100*Total/sum(Total), 
+         Ratio = round(100*Total/Activerecruit,digits =2),
+         Race = ifelse(grepl("Race.",Race), "Unknown", Race),
+         Race = factor(Race,levels=c("White", "Hispanic/ Latinx", "Black/ African-American", "Asian/ Middle Eastern", "American Indian/ Alaskan Native", "Native Hawaiian/ Other Pacific Islander", "Multi-racial/ Other","Unknown")),
+         Month=factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")))
+}
+
+#for UCh
+
+
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.9), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*6,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,80), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /6,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0,12.0,13.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nUniversity of Chicago Medicine", x = "",caption="Native Hawaiian or Other Pacific Islander is removed because of no verified participants in this group till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#SF
+data <- race_dt(plt.combo.SF,"Race")
+Site <- "Sanford Health"
+ggplot(data[!grepl("Mar",data$Month),], mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.9), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,100), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8.0,10.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nSanford Health", x = "",caption="Native Hawaiian or Other Pacific Islander is removed because of no verified participants in this group till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#MF
+data <- race_dt(plt.combo.MF,"Race")
+
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.7), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,100), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(5.0,10.0,15.0,20.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nMarshfield Clinic Health System", x = "",caption="Native Hawaiian or Other Pacific Islander is removed because of no verified participants in this group till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#HFH
+
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.5), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*2,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,80), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /2,  name = "% of Response Ratio", breaks=c(5.0,10.0,20,30.0,40.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nHenry Ford Health System", x = "",caption="Native Hawaiian or Other Pacific Islander is removed because of no verified participants in this group till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#HP
+data <- race_dt(plt.combo.HP,"Race")
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.9), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,110), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6,8.0,10.0,12),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nHealthPartners", x = "",caption="Native Hawaiian or Other Pacific Islander is removed because of no verified participants in this group till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#KPGA
+data <- race_dt(plt.combo.kpga)
+
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.4), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,70), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6,8.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nKaiser Permanente Georgia", x = "") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+#KPNW
+data <- race_dt(plt.combo.kpnw,"Race")
+
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.8), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,100), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /20,  name = "% of Response Ratio", breaks=c(1.0,2.0,3,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nKaiser Permanente Northwest", x = "") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+data <- race_dt(plt.combo.kphi,"Race")
+ggplot(data, mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.2), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + 
+    scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,50), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(1.0,2.0,3,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nKaiser Permanente Hawaii", x = "") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+data <- race_dt(plt.combo.kpco,"Race")
+ggplot(data[which(data$Activerecruit !=0),], mapping=aes(x = Month,fill=Race, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste0(format(round(prop,digits=1),nsmall=1)), y=prop*0.2), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 1.0,preserve="total"),size=2.5,label.padding=unit(0.15,"lines")) + scale_fill_manual(values = cbp1,name="Race/Ethnicity") +
+    #scale_fill_brewer(palette ="Set3",name="Race/Ethnicity") +
+    scale_y_continuous( name="% of Total Verified",limits=c(0,90), labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6,8.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Race \nKaiser Permanente Colorado", x = "") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+```
+
+#Insurance
+
+```{r}
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+ "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+ "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+
+ins_color <- c("#74B0C7","#FBE5B5","#d8daeb","#CC7D15","#3C989E","#797D83")
+
+Ins_dt <- function(dt.combo,Insurance){
+data <- dt.combo %>% 
+  filter(.,newcol=="Insurance") %>% select(site, Month,newcol,new_group,Total,Activerecruit)%>% 
+ group_by(Month) %>% dplyr::rename(Insurance=new_group) %>% group_by(Month) %>% 
+  mutate(T_verified= sum(Total), 
+         T_invited = sum(Activerecruit),
+         prop = 100*Total/sum(Total), 
+         Ratio = ifelse(Activerecruit==0 & Total ==0,0,round(100*Total/Activerecruit,digits =2)),
+         Insurance=gsub("Insurance.","",Insurance),
+         Insurance = factor(Insurance,levels=c("Private/Commercial","Military","Medicare","Medicaid","Uninsured","Unknown","Other")),
+         Month=factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24")))
+}
+
+library(rcartocolor)
+
+data <- Ins_dt(plt.combo.UC,"Insurance")
+max_y <- 10*round(max(c(0.1*max(data$prop),max(data))),0)
+ T <- 10*round(0.1*max(data$prop)/max(data),0)
+ breaks_1 <- seq(20,max_y,20)
+ breaks_2 <- seq(1,0.1*max_y,1) 
+
+
+ggplot(data[!grepl("Other",data$Insurance) & !grepl("Mar",data$Month),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.35), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*3.5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,80), breaks=c(10,20,30,40,50,60,70),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /3,  name = "% of Response Ratio", breaks=c(4.0,8.0,12.0,16.0,20.0,24.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nUniversity of Chicago Medicine", x = "",
+          caption ="'Other' Group of Insurance is removed") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" ) #saved the dim (900*630)
+
+ggplot(data[!grepl("Other",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.8), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*3,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5) + 
+   #scale_fill_carto_d(name="Insurance",palette="Safe") +
+   scale_fill_brewer(palette ="Pastel1",name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,70), breaks=c(10,20,30,40,50,60,70),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /3,  name = "% of Response Ratio", breaks=c(4.0,8.0,12.0,16.0,20.0,24.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend(override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nAll Sites of Connect", x = "",
+          caption ="'Other' Group of Insurance is removed") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+#SF
+data <- ins_dt(plt.combo.SF,Insurance)
+Site <- "Sanford Health"
+
+ggplot(data[!grepl("Military|Uninsured",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*1.02), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*3,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,100), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /3,  name = "% of Response Ratio", breaks=c(5.0,10.0,15.0,20.0,25.0,30.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nSanford Health", x = "",
+          caption ="Neither 'Military' Nor 'Other' Insurance Group has any participants and is removed ") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+data <- Ins_dt(plt.combo.MF,"Marshfield Clinic Health System")
+ggplot(data[!grepl("Other",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*1.02), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*7,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,100), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /7,  name = "% of Response Ratio", breaks=c(5.0,10.0,15.0,20.0,25.0,30.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nMarshfield Clinic Health System", x = "",
+          caption ="'Other' Group of Insurance is removed") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#HP
+data <- Ins_dt(plt.combo.HP,Insurance)
+ Site <-   "HealthPartners"
+tapply(data$prop,data$Insurance, min)
+tapply(data$prop,data$Insurance, max)
+
+ggplot(data[!grepl("Other|Unknown",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.8), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,120), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0,12.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nHealthPartners", x = "",
+          caption ="Neither 'Unknown' nor 'Other' Insurance Group is available and removed") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#HFH
+data <- Ins_dt(plt.combo.HFH,,Insurance)
+ Site <-  "Henry Ford Health System"
+#to manually check the range of the verified % and ratio to derive the ratio of the axis y1/ y2
+tapply(data$prop,data$Insurance, min)
+tapply(data$Ratio,data$Insurance, min)
+tapply(data$prop,data$Insurance, max)
+tapply(data$Ratio,data$Insurance, max)
+
+data$Insurance <- droplevels(data$Insurance)
+ggplot(data[!grepl("Other",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.5), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nHenry Ford Health System", x = "",
+          caption ="The'Other' Insurance Group is removed. Neither 'Military' nor 'Unknown' is available") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+#KPCO
+data <- Ins_dt(plt.combo.kpco,,Insurance)
+ Site <-  "Kaiser Permanente Colorado"
+
+ggplot(data[!grepl("Other",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.7), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(4.0,8.0,12.0,16.0,20.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nKaiser Permanente Colorado", x = "",
+          caption ="Neither 'Military' nor 'Uninsurance' is available till now. The 'Other' Insurance group is removed") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+data<- Ins_dt(plt.combo.kpga,"Kaiser Permanente Geogeria")
+data$Insurance <- droplevels(data$Insurance)
+ggplot(data[!grepl("Medicaid",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.7), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*15,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /15,  name = "% of Response Ratio", breaks=c(4.0,8.0,12.0,16.0,20.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nKaiser Permanente Geogeria", x = "",
+          caption ="The verified participants from the 'Medicaid' group isn't available and removed.\nNeither 'Uninsured' nor 'Military' Insurance group is available till now")  +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+##KPHI
+data <- Ins_dt(plt.combo.kphi, ,Insurance)
+ Site <-  "Kaiser Permanente Hawaii"
+ggplot(data[!grepl("Other",data$Insurance),], mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.4), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /20,  name = "% of Response Ratio", breaks=c(4.0,8.0,12.0,16.0,20.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nKaiser Permanente Hawaii", x = "",
+          caption ="Neither of or 'Military' nor 'Uninsured' Insurance group is available till now.\nThe 'Other' group is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+data <- Ins_dt(plt.combo.kpnw,Insurance)
+Site <- "Kaiser Permanente Northwest"
+ggplot(data, mapping=aes(x = Month,fill=Insurance, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.8), color = "black", size = 3, position = position_dodge2(width = 1.0,preserve = "total")) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,label.padding=unit(0.15,"lines"),show.legend = F) + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Safe") +
+    #scale_fill_OkabeIto(name="Insurance") +
+    scale_fill_manual(values=ins_color,name="Insurance") +
+    scale_y_continuous( name="% of Total Verified",limits =c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8.0,10.0),labels = scales::number_format(accuracy = 0.1))) + 
+    guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title="Total % of Verified Participants and Response Ratio by Insurance \nKaiser Permanente Northwest", x = "",
+          caption ="Neither 'Military' nor 'Uninsurance' Insurance group is available till now") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+```
+
+#for RUCA code: urbanicity levels:
+
+```{r}
+#I had commented several color-blind friendly color palette options in the code to make a free choice.
+pal_ruca <- c("#de77ae","#FCAE91", "#C2E699", "#A1DAB4","#7fbc41")
+library(viridis)
+# execute this command only the first time you use ggpubfigs
+devtools::install_github("JLSteenwyk/ggpubfigs")
+# load ggpubfigs
+library(ggpubfigs)
+library(see)
+
+ruca_dt <- function(dt.combo,Urbanicity){
+  data <- dt.combo %>% 
+  filter(.,newcol=="Urbanicity") %>% select(site, Month,newcol,new_group,Total,Activerecruit)%>% 
+ group_by(Month) %>% dplyr::rename(Urbanicity=new_group) %>%
+    mutate(RUCA=ifelse(str_split_i(Urbanicity," ",-1)=='1', "Code 1",
+                   ifelse(str_split_i(Urbanicity," ",-1)=='2', "Code 2", 
+                     ifelse(str_split_i(Urbanicity," ",-1) %in% c("3","4","5","6"), "Code 3~6", 
+                       ifelse(str_split_i(Urbanicity," ",-1) %in% c("7","8","9","10"), "Code 7~10","Unknown")))),
+         RUCA=factor(RUCA,levels=c("Code 1","Code 2","Code 3~6", "Code 7~10", "Unknown"))) %>% 
+    as_tibble() %>% group_by(Month,RUCA)  %>% 
+  mutate(T1_verified= sum(Total, na.rm=T), 
+         T1_invited = sum(Activerecruit, na.rm=T)) %>% as_tibble() %>% 
+  group_by(Month) %>% 
+  mutate(T_verified= sum(Total, na.rm=T), 
+         T_invited = sum(Activerecruit, na.rm=T), 
+         prop = 100*T1_verified/sum(Total, na.rm=T), 
+         Ratio = round(100*T1_verified/T1_invited,digits =2), 
+         Month=factor(Month,levels=c("Feb-23","Mar-23","May-23","Aug-23","Nov-23","Feb-24"))) %>% arrange(RUCA,desc(Ratio)) %>%distinct(RUCA, .keep_all = TRUE)
+}
+
+#
+data <- ruca_dt(plt.combo.UC,Urbanicity)
+Site <- "University of Chicago Medicine"
+ggplot(data, mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.8), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(5,4,3,2,1))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80,100), limits= c(0, 105),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5, name = "% of Response Ratio", 
+                                             breaks=c(5.0,10.0,15.0,20.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+data <- ruca_dt(plt.combo.HFH,Urbanicity)
+Site <- "Henry Ford Health System"
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.8), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*2,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80,100), limits= c(0, 105),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /2, name = "% of Response Ratio", 
+                                             breaks=c(5.0,10.0,15.0,20.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+
+data <- ruca_dt(plt.combo.MF,Urbanicity)
+Site <- "Marshfield Clinic Health System"
+
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.3), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*8,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60), limits= c(0, 60),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /8, name = "% of Response Ratio", 
+                                             breaks=c(3.0,6.0,9.0,12.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+#HFH
+data <- ruca_dt(plt.combo.HFH,Urbanicity)
+Site <- "Henry Ford Health System"
+
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.3), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*2,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + scale_fill_manual(values =rev(pal_ruca),name="RUCA Code") + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") + 
+    #scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    #scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80,100), limits= c(0, 105),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /2, name = "% of Response Ratio", 
+                                             breaks=c(10.0,20.0,30.0,40.0,50.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+#SF
+data <- ruca_dt(plt.combo.SF,Urbanicity)
+Site <- "Sanford Health System"
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.5), color = "black", size = 3, position = position_dodge(width = 0.9)) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") +
+    #scale_fill_manual(values =rev(pal_ruca),name="RUCA Code") + 
+    scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    #scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80,100), limits= c(0, 105),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5, name = "% of Response Ratio", 
+                                             breaks=c(4.0,8.0,12.0,16.0,20.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+#KP sites
+data <- ruca_dt(plt.combo.kpga,Urbanicity)
+Site <- "Kaiser Permenante Georgia"
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=round(prop,digits=1), y=prop*0.5), color = "black", size = 3, position = position_dodge(width = 0.9)) + 
+    geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") +
+    #scale_fill_manual(values =rev(pal_ruca),name="RUCA Code") + 
+    scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    #scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(20,40,60,80,100), limits= c(0, 105),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /20, name = "% of Response Ratio", 
+                                             breaks=c(1.0,2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+
+data <- ruca_dt(plt.combo.kphi,Urbanicity)
+Site <- "Kaiser Permenante Hawaii"
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1),nsmall=1)), y=prop*0.5), color = "black", size = 3, position = position_dodge(width = 0.9)) + 
+    geom_label(aes(y=Ratio*15,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") +
+    #scale_fill_manual(values =rev(pal_ruca),name="RUCA Code") + 
+    scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    #scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(15,30,45,60), limits= c(0, 65),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /15, name = "% of Response Ratio", 
+                                             breaks=c(1.0,2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+
+#KPNW
+data <- ruca_dt(plt.combo.kpnw,Urbanicity)
+Site <- "Kaiser Permenante Northwest"
+ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1),nsmall=1)), y=prop*0.5), color = "black", size = 3, position = position_dodge(width = 0.9)) + 
+    geom_label(aes(y=Ratio*15,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    #scale_fill_brewer(palette ="Dark2",name="RUCA Code") +
+    #scale_fill_manual(values =rev(pal_ruca),name="RUCA Code") + 
+    scale_fill_carto_d(name = "Insurance: ", palette = "Earth",direction=-1)+
+    #scale_fill_oi(name = "Insurance: ",palette = "full",reverse = FALSE,order=c(1,4,2,5,3))+
+    scale_y_continuous( name="% of Total Verified", breaks=c(15,30,45,60,80), limits= c(0,90),
+                        labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /15, name = "% of Response Ratio", 
+                                             breaks=c(1.0,2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1))) + guides(fill = guide_legend( override.aes = aes(label = ""))) +
+    labs( title=paste0("Urbanicity (RUCA code) at Verification (%) and Response Ratio among Connect Verified Participants\n", Site), x = "", caption="Code 1 is the most urban and Code 10 is the most rural.\nThe 'Unknown' Urbanicity group is removed") + 
+    theme( axis.title.x = element_text( size = 14, face = "bold"),
+           axis.title.y = element_text(size = 14, face = "bold"), 
+           #axis.title.y.right = element_text(size=10,face="bold"), 
+           title = element_text(size=9,face="bold"), 
+           # Remove panel border 
+           panel.border = element_blank(),
+           # Remove panel grid lines 
+           panel.grid.major = element_blank(), 
+           panel.grid.minor = element_blank(), 
+           # Remove panel background 
+           panel.background = element_blank(), 
+           # Add axis line
+           axis.line = element_line(colour = "grey"), 
+           # Remove the legend 
+           legend.title = element_text(size=12,face="bold"), 
+           legend.position ="bottom" )
+```
+
+#for the SES
+
+```{r}
+
+adi_pal <- c("#67A9CF","#66C2A4","#e5f5e0","#FED98E","#F4A582",)
+adi_pal2 <- c("#2973A5","#3C989E", "#BBD5D7","#E7CCAD", "#CC7D15")
+
+adi_dt <- function(dt.combo,SES){
+   data <- dt.combo %>% filter(.,newcol=="SES") %>% 
+     select(site, Month,newcol,new_group,Total,Activerecruit)%>% 
+     dplyr::rename(ADI=new_group) %>% group_by(Month) %>% 
+     mutate(T_verified= sum(Total), 
+            T_invited = sum(Activerecruit),
+            prop = 100*Total/sum(Total), 
+            Ratio = round(100*Total/Activerecruit,digits =2),
+            ADI = ifelse(grepl("Unknown", ADI), "Unknown/ Missing", ADI),
+            ADI = factor(ADI,levels=c("First Quartile (ADI scores 1-25)", "Second Quartile (ADI scores 26-50)", "Third Quartile (ADI scores 51-75)", "Fourth Quartile (ADI scores 76-100)", "Unknown/ Missing", "Other ADI")),
+         Month=factor(Month,levels=c("Feb-23","May-23","Aug-23","Nov-23","Feb-24")))
+}
+
+data<- adi_dt(plt.combo.HP,"SES")
+Site <- "HealthPartners"
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5) + 
+    #scale_fill_brewer(palette ="Accent",name="ADI") +
+    scale_fill_manual(values=adi_pal, names="Insurance: ")
+    scale_fill_OkabeIto(name = "Insurance: ")
+    scale_y_continuous( name="% of Total Verified", limits=c(0,60), breaks=c(10,20,30,40,50,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8,10),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title="Total % of Verified Participants and Response Ratio by ADI \nAll Sites of Connect", x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
 
 ```
