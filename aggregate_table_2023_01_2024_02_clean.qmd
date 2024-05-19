@@ -2890,7 +2890,7 @@ ggplot(data[!grepl("Unknown",data$RUCA),], mapping=aes(x = Month,fill=RUCA, y = 
 ```{r}
 
 adi_pal <- c("#67A9CF","#66C2A4","#e5f5e0","#FED98E","#F4A582",)
-adi_pal2 <- c("#2973A5","#3C989E", "#BBD5D7","#E7CCAD", "#CC7D15")
+adi_pal2 <- c("#2973A5","#3C989E", "#BBD5D7","#E7CCAD", "#CC7D15") #based on the CGOV_20456_color_pattelet Mia recommended
 
 adi_dt <- function(dt.combo,SES){
    data <- dt.combo %>% filter(.,newcol=="SES") %>% 
@@ -2905,19 +2905,161 @@ adi_dt <- function(dt.combo,SES){
          Month=factor(Month,levels=c("Feb-23","May-23","Aug-23","Nov-23","Feb-24")))
 }
 
+data<- adi_dt(plt.combo.UC,"SES")
+Site <- "University of Chicago Medicine"
+
+
 data<- adi_dt(plt.combo.HP,"SES")
 Site <- "HealthPartners"
+adi_pal <- c("#008080", "#609E91", "#A0BDA2",  "#F2D7A7", "#E8AD7C")
+
 ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
     geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
     geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
-    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    scale_fill_carto_d(palette="Geyser",name="ADI")
+    #scale_fill_manual(values=adi_pal,name="ADI")+
     #scale_fill_brewer(palette ="Accent",name="ADI") +
-    scale_fill_manual(values=adi_pal, names="Insurance: ")
-    scale_fill_OkabeIto(name = "Insurance: ")
-    scale_y_continuous( name="% of Total Verified", limits=c(0,60), breaks=c(10,20,30,40,50,60,80,100),labels = scales::number_format(accuracy = 0.1), 
-                        sec.axis = sec_axis( ~ . /10,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8,10),labels = scales::number_format(accuracy = 0.1)))  + 
+    #scale_fill_OkabeIto(name = "ADI: ") +
+    #scale_fill_viridis_d(name="ADI",direction = -1,option="cividis") + 
+    scale_y_continuous( name="% of Total Verified", limits=c(0,60), breaks=c(10,20,30,40,50,60),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8,10,12),labels = scales::number_format(accuracy = 0.1)))  + 
     guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
-    labs( title="Total % of Verified Participants and Response Ratio by ADI \nAll Sites of Connect", x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+    
+    
+data<- adi_dt(plt.combo.HFH,"SES")
+Site <- "Hentry Ford Health System"
+
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.6), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    scale_fill_carto_d(palette="Geyser",name="ADI")
+    #scale_fill_manual(values=adi_pal,name="ADI")+
+    #scale_fill_brewer(palette ="Accent",name="ADI") +
+    #scale_fill_OkabeIto(name = "ADI: ") +
+    #scale_fill_viridis_d(name="ADI",direction = -1,option="cividis") + 
+    scale_y_continuous( name="% of Total Verified", limits=c(0,60), breaks=c(10,20,30,40,50,60),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8,10,12),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )  
+
+data<- adi_dt(plt.combo.HFH,"SES")
+Site <- "Hentry Ford Health System" 
+
+ ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.4), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    scale_fill_carto_d(palette="Geyser",name="ADI")+
+#scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = -1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,75), breaks=c(10,20,30,40,50,60,70),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ . /5,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0,12.0,15.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )   
+ 
+ 
+data<- adi_dt(plt.combo.SF,"SES")
+Site <- "Sanford Health" 
+
+ggplot(data[!grepl("Missing",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.7), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+    scale_fill_carto_d(palette="Geyser",name="ADI")+
+#scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,100), breaks=c(10,20,30,40,50,60,70,80,100),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ . ,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0,12.0,15.0,18.0,100),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n Both 'Unknown' and 'Other' Groups in ADI are removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" ) 
+
+data<- adi_dt(plt.combo.MF,"SES")
+Site <- "Marshfield Clinic Health System" 
+
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.4), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge(width = 0.8),size=2.5,show.legend = F) + 
+#    scale_fill_carto_d(palette="Geyser",name="ADI",direction=1)+
+scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,100), breaks=c(10,20,30,40,50,60,70,80,100),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ ./10 ,  name = "% of Response Ratio", breaks=c(2.0,4.0,6.0,8.0,10.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
     theme( #axis.title.x = element_text( size = 14, face = "bold"),
         axis.title.y = element_text(size = 14, face = "bold"),
         #axis.title.y.right = element_text(size=10,face="bold"),
@@ -2935,4 +3077,134 @@ ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop
         legend.title = element_text(size=12,face="bold"),
         legend.position ="bottom" )
 
+data<- adi_dt(plt.combo.UC,"SES")
+Site <- "University of Chicago Medicine"
+
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.2), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*4.5,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 0.8,preserve="total"),size=2.5,show.legend = F,label.padding = unit(0.15,"lines")) + 
+#    scale_fill_carto_d(palette="Geyser",name="ADI",direction=1)+
+scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,60), breaks=c(10,20,30,40,50,60),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ ./4.5 ,  name = "% of Response Ratio", breaks=c(3.0,6.0,9.0,12.0,15.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+data<- adi_dt(plt.combo.kpga,"SES")
+Site <- "Kaiser Permenante Georgia"
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.2), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*10,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 0.8,preserve="total"),size=2.5,show.legend = F,label.padding = unit(0.15,"lines")) + 
+#    scale_fill_carto_d(palette="Geyser",name="ADI",direction=1)+
+scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,45), breaks=c(10,20,30,40,50),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ ./10 ,  name = "% of Response Ratio", breaks=c(1.0,2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+data<- adi_dt(plt.combo.kphi,"SES")
+Site <- "Kaiser Permenante Hawaii"
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.7), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*20,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 0.8,preserve="total"),size=2.5,show.legend = F,label.padding = unit(0.15,"lines")) + 
+#    scale_fill_carto_d(palette="Geyser",name="ADI",direction=1)+
+scale_fill_manual(values=adi_pal,name="ADI")+
+#scale_fill_brewer(palette ="Accent",name="ADI") +
+#scale_fill_OkabeIto(name = "ADI: ") +
+#scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+scale_y_continuous( name="% of Total Verified", limits=c(0,90), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                    sec.axis = sec_axis( ~ ./20 ,  name = "% of Response Ratio", breaks=c(1.0,2.0,3.0,4.0,5.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
+
+
+data<- adi_dt(plt.combo.kpga,"SES")
+Site <- "Kaiser Permenante Northwest"
+ggplot(data[!grepl("Other",data$ADI),], mapping=aes(x = Month,fill=ADI, y = prop)) + 
+    geom_bar(stat="identity",na.rm=TRUE,width=0.92, position = "dodge") + 
+    geom_text(aes(label=paste(format(round(prop,digits=1))), y=prop*0.3), color = "black", size = 3, position = position_dodge(width = 1.0)) + 
+    geom_label(aes(y=Ratio*15,label=paste(format(round(Ratio,digits=1),nsmall=1))),color="black",position = position_dodge2(width = 0.8,preserve="total"),size=2.5,show.legend = F,label.padding = unit(0.15,"lines")) + 
+    #    scale_fill_carto_d(palette="Geyser",name="ADI",direction=1)+
+    scale_fill_manual(values=adi_pal,name="ADI")+
+    #scale_fill_brewer(palette ="Accent",name="ADI") +
+    #scale_fill_OkabeIto(name = "ADI: ") +
+    #scale_fill_viridis_d(name="ADI",direction = 1,option="cividis") + 
+    scale_y_continuous( name="% of Total Verified", limits=c(0,100), breaks=c(20,40,60,80,100),labels = scales::number_format(accuracy = 0.1), 
+                        sec.axis = sec_axis( ~ ./15 ,  name = "% of Response Ratio", breaks=c(1.0,2.0,3.0,4.0,5.0,6.0),labels = scales::number_format(accuracy = 0.1)))  + 
+    guides(fill = guide_legend( override.aes = aes(label = ""), nrow=2)) +
+    labs( title=paste0("Total % of Verified Participants and Response Ratio by ADI \n",Site), x = "",caption ="First Quartile represents least deprived and 4th Quartile represents most deprived.\n 'Other' Group in ADI is removed.") +
+    theme( #axis.title.x = element_text( size = 14, face = "bold"),
+        axis.title.y = element_text(size = 14, face = "bold"),
+        #axis.title.y.right = element_text(size=10,face="bold"),
+        title = element_text(size=9,face="bold"),
+        # Remove panel border
+        panel.border = element_blank(),  
+        # Remove panel grid lines
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        # Add axis line
+        axis.line = element_line(colour = "grey"),
+        # Remove the legend
+        legend.title = element_text(size=12,face="bold"),
+        legend.position ="bottom" )
 ```
