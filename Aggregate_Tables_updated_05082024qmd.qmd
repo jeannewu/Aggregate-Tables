@@ -83,7 +83,7 @@ names(dt1) \<- c("newcol","race","factor","Active","Passive","ActiveRecruits","A
 
 ```{r}
 #| echo: false
-non-KPsites
+#non-KPsites
 dir_ls <- c(259386008483,259383878314,259385406649,259384455947,259382411754)
 
 for (i in dir_ls){
@@ -317,9 +317,24 @@ dt2 <- as_tibble(dt2)  %>% mutate(Verified_percent = round(100 * as.numeric(Tota
 names(dt2)[3:12] <- c("Demographic Factors", "Total Verified","Active","Passive", "% of Verified", "Active Recruits", "% of Active Recruits","Response Ratio","Eligible Catchment Population","% Eligible")
 agg.ls[[f]] <- dt2
 
-write.csv(dt2,file=paste(outputpath,unique(dt2$Site),"_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
+#write.csv(dt2,file=paste(outputpath,unique(dt2$Site),"_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
+
 }
 
 write.csv(agg.ls[[3]],file=paste(outputpath,"MFH_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
+
+#to get the overall aggregate table
+vars4 <- c("Total Verified","Active","Passive", "Active Recruits", "Eligible Catchment Population")
+
+All.aggregate <- rbindlist(agg.ls) %>% 
+    select(newcol,Site,`Demographic Factors`, `Total Verified`,Active, Passive,`Active Recruits`,`Eligible Catchment Population`) %>% group_by(newcol,`Demographic Factors`) %>%
+    mutate(across(contains(vars4),~sum(as.numeric(.x),na.rm=TRUE))) %>% distinct(newcol, .keep_all = TRUE) %>% as_tibble() %>% 
+    mutate(Site="Overall",
+           `% of Verified` = round(100 * as.numeric(`Total Verified`)/max(as.numeric(`Total Verified`),na.rm=TRUE), 2),
+           Response.Rate =ifelse(as.numeric(`Active Recruits`) ==0 | is.na(`Active Recruits`),0, round(100 * as.numeric(`Total Verified`)/as.numeric(`Active Recruits`,na.rm=TRUE),2)),
+           `% of Active Recruits` = paste0(round(100 * as.numeric(`Active Recruits`)/max(as.numeric(`Active Recruits`),na.rm=TRUE), 2), " %"),
+           `% Eligible` = paste0(round(100 * as.numeric(`Eligible Catchment Population`)/max(as.numeric(`Eligible Catchment Population`),na.rm=TRUE), 2), " %")) %>%   select(newcol,Site,`Demographic Factors`, `Total Verified`,Active, Passive, `% of Verified`, `Active Recruits`, `% of Active Recruits`,Response.Rate,`Eligible Catchment Population`,`% Eligible`)
+
+write.csv(All.aggregate,file=paste(outputpath,"OverAll_Aggregate_TableApr302024_integrated_estimatedNpt_",Sys.Date(),".csv",sep=""),row.names = F,quote = F,na="")
 
 ```
